@@ -1,0 +1,1239 @@
+/* =========================================================================
+   Design tokens — edit here, changes cascade everywhere
+   ========================================================================= */
+:root {
+  /* Color */
+  --color-bg:           #ffffff;
+  --color-surface:      #f8f9fa;
+  --color-border:       #dadce0;
+  --color-accent:       #1a73e8;
+  --color-accent-dark:  #1557b0;
+  --color-text:         #202124;
+  --color-text-secondary: #5f6368;
+  --color-error:        #c5221f;
+
+  /* Typography */
+  --font-heading: "Google Sans", "Inter", system-ui, sans-serif;
+  --font-body:    system-ui, -apple-system, sans-serif;
+  --font-mono:    "Roboto Mono", ui-monospace, monospace;
+
+  /* Short aliases used by reference-style rules (e.g. the match-page stopwatch) */
+  --mono:  var(--font-mono);
+  --muted: var(--color-text-secondary);
+
+  /* Spacing — 8px baseline grid */
+  --space-1:  8px;
+  --space-2:  16px;
+  --space-3:  24px;
+  --space-4:  32px;
+  --space-6:  48px;
+  --space-8:  64px;
+
+  /* Radius */
+  --radius-sm:  8px;
+  --radius-pill: 20px;
+
+  /* Shadow — whisper only */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.08);
+
+  /* Motion */
+  --transition: 150ms ease-out;
+
+  /* Layout */
+  --max-content: 960px;
+  --max-form:    640px;
+}
+
+/* =========================================================================
+   Reset + base
+   ========================================================================= */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--color-text);
+}
+
+a { color: var(--color-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* =========================================================================
+   Layout helpers
+   ========================================================================= */
+.container {
+  width: 100%;
+  max-width: var(--max-content);
+  margin-inline: auto;
+  padding-inline: var(--space-3);
+}
+
+.container--form {
+  max-width: var(--max-form);
+}
+
+/* =========================================================================
+   Navigation
+   ========================================================================= */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  border-bottom: 1px solid var(--color-border);
+  padding-inline: var(--space-3);
+  position: sticky;
+  top: 0;
+  background: var(--color-bg);
+  z-index: 100;
+}
+
+.nav__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.nav__brand svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.nav__links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.nav__link {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: color var(--transition);
+}
+
+.nav__link:hover,
+.nav__link--active {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+/* =========================================================================
+   Tab bar (Match / Watch)
+   ========================================================================= */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  gap: 0;
+}
+
+.tab {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition), border-color var(--transition);
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+}
+
+.tab:hover { color: var(--color-text); }
+
+.tab--active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.tab-panel { display: none; padding-top: var(--space-4); }
+.tab-panel--active { display: block; }
+
+/* =========================================================================
+   Cards
+   ========================================================================= */
+.card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-3);
+}
+
+/* =========================================================================
+   Buttons
+   ========================================================================= */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 10px var(--space-3);
+  transition: background var(--transition), color var(--transition), opacity var(--transition);
+  white-space: nowrap;
+}
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn--primary {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-accent-dark);
+}
+
+.btn--text {
+  background: transparent;
+  color: var(--color-accent);
+  padding-inline: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.btn--text:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+/* =========================================================================
+   Form inputs (outlined style)
+   ========================================================================= */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.field__input,
+.field__select,
+.field__textarea {
+  width: 100%;
+  padding: 10px var(--space-2);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.field__input:focus,
+.field__select:focus,
+.field__textarea:focus {
+  border-color: var(--color-accent);
+}
+
+.field__textarea { resize: vertical; min-height: 96px; }
+
+/* =========================================================================
+   Form layout
+   ========================================================================= */
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+@media (max-width: 560px) {
+  .form-row { grid-template-columns: 1fr; }
+}
+
+/* =========================================================================
+   Page sections
+   ========================================================================= */
+.hero {
+  padding: var(--space-8) 0 var(--space-6);
+  text-align: center;
+}
+
+.hero__title {
+  font-size: 2.5rem;
+  font-weight: 400;
+  margin-bottom: var(--space-2);
+}
+
+.hero__subtitle {
+  font-size: 1.125rem;
+  color: var(--color-text-secondary);
+  max-width: 560px;
+  margin-inline: auto;
+  margin-bottom: var(--space-4);
+}
+
+.section {
+  padding: var(--space-6) 0;
+}
+
+.section__title {
+  font-size: 1.5rem;
+  margin-bottom: var(--space-3);
+}
+
+/* =========================================================================
+   State indicators
+   ========================================================================= */
+.status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status-badge--active {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent-dark);
+}
+
+.status-badge--inactive {
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+/* =========================================================================
+   Loading / empty states
+   ========================================================================= */
+.loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-8) var(--space-3);
+  color: var(--color-text-secondary);
+}
+
+.empty-state__title {
+  font-size: 1.125rem;
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+  color: var(--color-text);
+}
+
+/* =========================================================================
+   Error message
+   ========================================================================= */
+.error-banner {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-error) 8%, transparent);
+  color: var(--color-error);
+  font-size: 0.875rem;
+  display: none;
+}
+
+.error-banner--visible { display: block; }
+
+/* =========================================================================
+   Divider
+   ========================================================================= */
+.divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: var(--space-4) 0;
+}
+
+/* =========================================================================
+   Radio / chip groups (Match intake form)
+   ========================================================================= */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.radio-group--horizontal {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.radio-option {
+  display: block;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.radio-option:hover { border-color: var(--color-accent); }
+
+.radio-option input[type="radio"] {
+  margin-right: var(--space-1);
+  accent-color: var(--color-accent);
+}
+
+.radio-option--selected {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.radio-option__label {
+  font-weight: 500;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+}
+
+.radio-option__hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 150ms ease-out;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* Selected state — supports both `.chip.selected` (new) and `.chip--selected`
+   (legacy, used by watch.js and earlier region chip handlers). */
+.chip.selected,
+.chip--selected {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.chip-group--multi .chip.selected,
+.chip-group--multi .chip--selected {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+}
+
+/* Two-column intake-form grid; collapses to single column on narrow screens. */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.form-grid > .full-width {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+}
+
+.checkbox-row input[type="checkbox"] {
+  accent-color: var(--color-accent);
+}
+
+/* =========================================================================
+   Field-level soft advisories (e.g. "very few luxury sailings under $2,500")
+   ========================================================================= */
+.field-advisory {
+  font-size: 13px;
+  color: #e37400;
+  margin-top: 6px;
+}
+
+/* =========================================================================
+   Label hint — secondary text inline with a field label, e.g. "(optional)"
+   ========================================================================= */
+.label-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.field-subtitle {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin: 4px 0 8px 0;
+}
+
+/* Pre-fill notice — shown above the Watch form when the user lands here
+   from a "Watch this price" click on a Match result card. */
+.prefill-notice {
+  padding: 10px 16px;
+  background: #e8f0fe;
+  border: 1.5px solid #4285f4;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #1a3a6b;
+  margin-bottom: 20px;
+}
+
+/* =========================================================================
+   Inline field-level validation errors — sit directly under their chip group
+   ========================================================================= */
+.field-error {
+  font-size: 13px;
+  color: #d93025;
+  margin-top: 4px;
+  min-height: 18px;
+}
+
+/* Date inputs default to the platform's UA font; force them to inherit so
+   they match the rest of the form. */
+input[type="date"] {
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--color-text);
+}
+
+/* =========================================================================
+   Departure ports — custom multi-select dropdown
+   ========================================================================= */
+.port-dropdown {
+  position: relative;
+}
+
+.port-dropdown__trigger {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.port-dropdown__trigger:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.port-dropdown__panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 100;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.port-dropdown__controls {
+  padding: 6px 16px;
+  display: flex;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 4px;
+}
+
+.port-dropdown__controls button {
+  font-size: 12px;
+  color: var(--color-accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.port-dropdown__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.port-dropdown__option:hover {
+  background: #f8f9fa;
+}
+
+.port-dropdown__option input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* =========================================================================
+   Match results — intake summary tags + recommendation cards
+   ========================================================================= */
+.intake-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.intake-tag {
+  padding: 4px 12px;
+  background: #f1f3f4;
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.match-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.match-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.match-card__title {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.match-card__line {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.match-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.match-card__meta-item { white-space: nowrap; }
+
+.match-card__price {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.vibe-bar {
+  margin: var(--space-2) 0;
+}
+
+.vibe-bar__label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.vibe-bar__track {
+  width: 100%;
+  height: 6px;
+  background: var(--color-surface);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.vibe-bar__fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: var(--radius-pill);
+  transition: width 400ms ease-out;
+}
+
+.match-card__reasoning {
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  margin: var(--space-2) 0;
+}
+
+.cols-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+@media (max-width: 560px) {
+  .cols-2 { grid-template-columns: 1fr; }
+}
+
+.cols-2__heading {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-1);
+}
+
+.cols-2 ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cols-2 li {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  padding-left: var(--space-2);
+  position: relative;
+}
+
+.cols-2 li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-text-secondary);
+}
+
+.match-card__cta {
+  margin-top: var(--space-2);
+}
+
+/* =========================================================================
+   Match results — callouts
+   ========================================================================= */
+.callout {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  margin: var(--space-3) 0;
+}
+
+.callout--top-pick {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border-left: 3px solid var(--color-accent);
+}
+
+.callout--muted {
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-text-secondary);
+}
+
+.callout__label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.callout__body {
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+.gaps {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: var(--space-3) 0;
+  padding-left: var(--space-2);
+}
+
+.gaps__title {
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: var(--color-text);
+}
+
+/* =========================================================================
+   Preference notice — appears above results when none of the user's
+   preferred cruise lines surfaced. Includes a one-click "show preferred
+   only" CTA that re-runs the search with relaxed filters.
+   ========================================================================= */
+.preference-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #fef7e0;
+  border: 1.5px solid #f9ab00;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.preference-notice__text {
+  font-size: 14px;
+  color: #5f4c00;
+  flex: 1;
+}
+
+.preference-notice__action {
+  font-size: 13px;
+  color: var(--color-accent);
+  background: none;
+  border: 1.5px solid var(--color-accent);
+  border-radius: 20px;
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 150ms ease-out;
+}
+
+.preference-notice__action:hover {
+  background: var(--color-accent);
+  color: white;
+}
+
+/* Info variant — used after the relaxed-search CTA fires. Blue palette
+   (versus the default amber warning) signals "we changed your filters,
+   here is what we found", not "no results matching your filters". */
+.preference-notice--info {
+  background: #e8f0fe;
+  border-color: #4285f4;
+}
+
+.preference-notice--info .preference-notice__text {
+  color: #1a3a6b;
+}
+
+/* =========================================================================
+   Match-page stopwatch — fixed top-right while a search is in flight
+   ========================================================================= */
+.stopwatch {
+  position: fixed;
+  top: 72px;
+  right: 24px;
+  z-index: 40;
+}
+
+.stopwatch__time {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.stopwatch--running .stopwatch__time {
+  color: var(--muted);
+}
+
+/* =========================================================================
+   Contact attribution — fixed bottom-right on every page
+   ========================================================================= */
+.contact-attribution {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* =========================================================================
+   Footer
+   ========================================================================= */
+.footer {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-4) 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* ----------------------------------------------------------------------
+   Watch panel — slide-in overlay launched from a Match card
+   ---------------------------------------------------------------------- */
+.watch-panel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 200;
+}
+
+.watch-panel {
+  position: fixed;
+  top: 0;
+  right: -480px;
+  width: 440px;
+  max-width: 95vw;
+  height: 100vh;
+  background: white;
+  z-index: 201;
+  overflow-y: auto;
+  padding: 24px;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  transition: right 250ms ease-out;
+}
+
+.watch-panel.open {
+  right: 0;
+}
+
+.watch-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.watch-panel__title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.watch-panel__close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.watch-panel__close:hover {
+  background: #f1f3f4;
+}
+
+.watch-panel__success {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.watch-panel__success-icon {
+  width: 48px;
+  height: 48px;
+  background: #e6f4ea;
+  color: #34a853;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin: 0 auto 16px;
+}
+
+/* ----------------------------------------------------------------------
+   Multi-watch dashboard cards (one per active watch)
+   ---------------------------------------------------------------------- */
+.watch-card {
+  border: 1.5px solid var(--color-border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.watch-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.watch-card__ship {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.watch-card__meta {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.watch-card__stats {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.watch-card__prices {
+  display: flex;
+  gap: 20px;
+  font-size: 14px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.watch-card__checked {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.watch-card__actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn--sm {
+  padding: 6px 16px;
+  font-size: 13px;
+}
+
+/* ----------------------------------------------------------------------
+   Watch "Add a watch" path selector
+   ---------------------------------------------------------------------- */
+.watch-path-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 600px;
+}
+
+.watch-path-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  transition: border-color 150ms ease-out;
+}
+
+.watch-path-card:hover {
+  border-color: var(--color-accent);
+}
+
+.watch-path-card__icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  width: 48px;
+  text-align: center;
+}
+
+.watch-path-card__content {
+  flex: 1;
+}
+
+.watch-path-card__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.watch-path-card__desc {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.btn--secondary {
+  padding: 10px 20px;
+  border-radius: 20px;
+  border: 1.5px solid var(--color-accent);
+  background: white;
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 150ms ease-out;
+  flex-shrink: 0;
+}
+
+.btn--secondary:hover {
+  background: var(--color-accent);
+  color: white;
+}
+
+.watch-card__remove {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 150ms ease-out;
+}
+
+.watch-card__remove:hover {
+  color: #d93025;
+  background: #fce8e6;
+}
+
+.remove-confirm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fce8e6;
+  border-radius: 8px;
+  border: 1.5px solid #f28b82;
+}
+
+.remove-confirm__text {
+  font-size: 13px;
+  flex: 1;
+  color: #c5221f;
+}
+
+.remove-confirm__yes {
+  font-size: 13px;
+  font-weight: 500;
+  color: white;
+  background: #d93025;
+  border: none;
+  border-radius: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.remove-confirm__yes:hover {
+  background: #c5221f;
+}
+
+.remove-confirm__cancel {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.remove-confirm__cancel:hover {
+  color: var(--color-text);
+}
+
+/* ----------------------------------------------------------------------
+   Account page — labeled key/value rows
+   ---------------------------------------------------------------------- */
+.account-card {
+  border: 1.5px solid var(--color-border);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 480px;
+}
+
+.account-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 14px;
+}
+
+.account-row:last-child {
+  border-bottom: none;
+}
+
+.account-label {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.account-value {
+  color: var(--color-text);
+  font-weight: 600;
+}

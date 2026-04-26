@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Match — Cruisewise</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <nav class="nav">
+    <a class="nav__brand" href="index.html">
+      <svg width="32" height="20" viewBox="0 0 64 40" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M2 28 Q4 34 12 35 L52 35 Q60 34 62 28 L56 24 L8 24 Z"/>
+        <rect x="14" y="16" width="36" height="8" rx="1"/>
+        <rect x="20" y="9" width="22" height="7" rx="1"/>
+        <rect x="30" y="4" width="10" height="5" rx="1"/>
+        <rect x="36" y="1" width="5" height="5" rx="1"/>
+        <path d="M0 37 Q8 35 16 37 Q24 39 32 37 Q40 35 48 37 Q56 39 64 37" stroke-width="1.5" opacity="0.5"/>
+      </svg>
+      Cruisewise
+    </a>
+    <ul class="nav__links">
+      <li><a class="nav__link" href="index.html">Home</a></li>
+      <li><a class="nav__link nav__link--active" href="match.html">Match</a></li>
+      <li><a class="nav__link" href="watch.html">Watch</a></li>
+      <li><a class="nav__link" href="account.html">Account</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <div class="stopwatch" id="stopwatch">
+      <span class="stopwatch__time" id="stopwatch-time" style="display:none"></span>
+    </div>
+
+    <section class="section">
+      <div class="container container--form" id="match-form-wrapper">
+        <h1 class="section__title">Find your sailing</h1>
+        <p style="color:var(--color-text-secondary);margin-bottom:var(--space-4);">
+          Answer a few questions and we will match you with sailings that fit your trip.
+        </p>
+
+        <form id="match-form" class="form-grid" novalidate>
+
+          <!-- 1. Travel party (chips) — alphabetical by display label -->
+          <div class="field full-width">
+            <span class="field__label">Who is traveling</span>
+            <div class="chip-group" id="travel-party-chips" data-name="travel_party">
+              <button type="button" class="chip" data-value="couple">A couple</button>
+              <button type="button" class="chip" data-value="family_with_kids">Families</button>
+              <button type="button" class="chip" data-value="friends">Friends</button>
+              <button type="button" class="chip" data-value="solo">Just me</button>
+              <button type="button" class="chip" data-value="multigen">Multi-gen</button>
+            </div>
+            <p class="field-error" id="error-travel-party"></p>
+          </div>
+
+          <!-- 1b. Party size — full-width row directly below the chips, hidden
+               until a non-fixed travel-party chip is chosen. -->
+          <div class="field full-width" id="party-size-wrapper" style="display:none">
+            <label class="field__label" for="party-size">Party size</label>
+            <input class="field__input" type="number" id="party-size" name="party_size"
+                   min="1" max="20" placeholder="How many travelers"
+                   style="max-width: 200px" />
+          </div>
+
+          <!-- 2. Cruise experience -->
+          <div class="field full-width">
+            <span class="field__label">Cruise experience</span>
+            <div class="chip-group" id="experience-chips" data-name="cruise_experience_level">
+              <button type="button" class="chip" data-value="first_timer">First timer</button>
+              <button type="button" class="chip" data-value="occasional">Been once or twice</button>
+              <button type="button" class="chip" data-value="loyal_cruiser">Seasoned cruiser</button>
+            </div>
+            <p class="field-error" id="error-experience"></p>
+          </div>
+
+          <!-- 3. Budget per person — already ascending by amount -->
+          <div class="field full-width">
+            <span class="field__label">Budget per person</span>
+            <div class="chip-group" id="budget-chips" data-name="budget">
+              <button type="button" class="chip" data-value="1000">Under $1,500</button>
+              <button type="button" class="chip" data-value="2000">$1,500–$2,500</button>
+              <button type="button" class="chip" data-value="3250">$2,500–$4,000</button>
+              <button type="button" class="chip" data-value="8000">$4,000+</button>
+            </div>
+            <p class="field-error" id="error-budget"></p>
+          </div>
+
+          <!-- 4. Trip length — single-select chip; default "Any length" -->
+          <div class="field full-width">
+            <span class="field__label">Trip length</span>
+            <div class="chip-group" id="trip-length-chips" data-name="trip_length">
+              <button type="button" class="chip" data-value="any">Any length</button>
+              <button type="button" class="chip" data-value="short">Short (3–5 nights)</button>
+              <button type="button" class="chip" data-value="week">Week (6–8 nights)</button>
+              <button type="button" class="chip" data-value="extended">Extended (9–14 nights)</button>
+            </div>
+            <p id="trip-length-advisory" class="field-advisory" style="display:none"></p>
+          </div>
+
+          <!-- 5. Departure window -->
+          <div class="field full-width">
+            <span class="field__label">Departure window</span>
+            <div class="form-row">
+              <div>
+                <label class="field__label" for="earliest_departure" style="font-weight:400;">Earliest</label>
+                <input class="field__input" type="date" id="earliest_departure" name="earliest_departure" />
+              </div>
+              <div>
+                <label class="field__label" for="latest_departure" style="font-weight:400;">Latest</label>
+                <input class="field__input" type="date" id="latest_departure" name="latest_departure" />
+              </div>
+            </div>
+            <label class="checkbox-row" style="margin-top:var(--space-1);">
+              <input type="checkbox" id="flexible_dates" name="flexible_dates" checked />
+              I am flexible on the exact dates
+            </label>
+          </div>
+
+          <!-- 6. Regions — "Any" first, then alphabetical -->
+          <div class="field full-width">
+            <span class="field__label">Regions you would consider</span>
+            <div class="chip-group chip-group--multi" id="region-chips" data-name="preferred_regions">
+              <button type="button" class="chip" data-value="any">Any Region</button>
+              <button type="button" class="chip" data-value="Alaska">Alaska</button>
+              <button type="button" class="chip" data-value="Asia">Asia</button>
+              <button type="button" class="chip" data-value="Australia">Australia</button>
+              <button type="button" class="chip" data-value="Bahamas">Bahamas</button>
+              <button type="button" class="chip" data-value="Bermuda">Bermuda</button>
+              <button type="button" class="chip" data-value="Caribbean">Caribbean</button>
+              <button type="button" class="chip" data-value="Hawaii">Hawaii</button>
+              <button type="button" class="chip" data-value="Mediterranean">Mediterranean</button>
+              <button type="button" class="chip" data-value="Mexico">Mexico</button>
+              <button type="button" class="chip" data-value="Northern Europe">Northern Europe</button>
+              <button type="button" class="chip" data-value="Pacific Coast">Pacific Coast</button>
+            </div>
+            <p class="field-error" id="error-regions"></p>
+          </div>
+
+          <!-- 7. Preferred cruise lines — optional loyalty/familiarity boost -->
+          <div class="field full-width">
+            <span class="field__label">Preferred cruise lines
+              <span class="label-hint">(Optional)</span>
+            </span>
+            <p class="field-subtitle">Have a loyalty status or a favorite line? Select it and we'll prioritize it in your results.</p>
+            <div class="port-dropdown" id="cruise-line-dropdown">
+              <button type="button" class="port-dropdown__trigger" id="cruise-line-trigger" aria-haspopup="listbox" aria-expanded="false">
+                <span id="cruise-line-label">All cruise lines</span>
+                <span aria-hidden="true">&#9662;</span>
+              </button>
+              <div class="port-dropdown__panel" id="cruise-line-panel" style="display:none" role="listbox">
+                <div class="port-dropdown__controls">
+                  <button type="button" id="cruise-line-select-all">Select all</button>
+                  <button type="button" id="cruise-line-clear-all">Clear all</button>
+                </div>
+                <div id="cruise-line-options"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 8. Departure ports — custom multi-select dropdown -->
+          <div class="field full-width">
+            <span class="field__label">Departure ports</span>
+            <div class="port-dropdown" id="port-dropdown">
+              <button type="button" class="port-dropdown__trigger" id="port-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false">
+                <span id="port-dropdown-label">All ports</span>
+                <span aria-hidden="true">&#9662;</span>
+              </button>
+              <div class="port-dropdown__panel" id="port-dropdown-panel" style="display:none" role="listbox">
+                <div class="port-dropdown__controls">
+                  <button type="button" id="port-select-all">Select all</button>
+                  <button type="button" id="port-clear-all">Clear all</button>
+                </div>
+                <div id="port-dropdown-options"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 9. Vibe (last) — alphabetical by display label -->
+          <div class="field full-width">
+            <span class="field__label">What is the vibe</span>
+            <div class="chip-group" id="vibe-chips" data-name="primary_vibe">
+              <button type="button" class="chip" data-value="adventure"
+                      title="Active excursions, expedition-style stops">Adventure</button>
+              <button type="button" class="chip" data-value="cultural"
+                      title="Port-heavy itineraries, lectures, enrichment">Cultural</button>
+              <button type="button" class="chip" data-value="family_fun"
+                      title="Waterslides, kids clubs, character meetups">Family Fun</button>
+              <button type="button" class="chip" data-value="luxury"
+                      title="Smaller ships, fine dining, attentive service">Luxury</button>
+              <button type="button" class="chip" data-value="party"
+                      title="Big ships, nightlife, casino, energetic crowd">Party</button>
+              <button type="button" class="chip" data-value="relaxation"
+                      title="Quiet days, spa, slow pace, adults-leaning">Relaxation</button>
+            </div>
+            <p class="field-error" id="error-vibe"></p>
+            <p id="vibe-advisory" class="field-advisory" style="display:none"></p>
+          </div>
+
+          <div class="full-width">
+            <button id="match-submit" class="btn btn--primary" type="submit">Find sailings</button>
+            <span id="match-loading" class="loading" style="display:none;margin-left:var(--space-2);">
+              <span class="spinner"></span>
+              <span>Finding your best match...</span>
+            </span>
+          </div>
+        </form>
+      </div>
+
+      <div class="container" id="match-results-wrapper" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:var(--space-3);">
+          <h1 class="section__title" style="margin:0;">Your matches</h1>
+          <button id="match-restart" class="btn btn--text">Start over</button>
+        </div>
+        <div id="intake-summary-container"></div>
+        <div id="preference-notice"></div>
+        <div id="match-results"></div>
+      </div>
+    </section>
+
+    <div id="watch-panel-overlay" class="watch-panel-overlay" style="display:none"></div>
+
+    <div id="watch-panel" class="watch-panel" aria-hidden="true">
+      <div class="watch-panel__header">
+        <h2 class="watch-panel__title">Watch this price</h2>
+        <button class="watch-panel__close" id="watch-panel-close" aria-label="Close">&#10005;</button>
+      </div>
+
+      <div id="watch-panel-prefill-notice" class="prefill-notice" style="display:none"></div>
+
+      <form id="watch-panel-form" class="form-stack" novalidate>
+
+        <div class="field">
+          <label class="field__label">Cruise line</label>
+          <input class="field__input" id="wp-cruise-line" type="text" readonly
+                 style="background:#f8f9fa;color:var(--color-text-secondary)" />
+        </div>
+
+        <div class="field">
+          <label class="field__label">Ship</label>
+          <input class="field__input" id="wp-ship-name" type="text" readonly
+                 style="background:#f8f9fa;color:var(--color-text-secondary)" />
+        </div>
+
+        <div class="field">
+          <label class="field__label">Departure</label>
+          <input class="field__input" id="wp-departure-date" type="text" readonly
+                 style="background:#f8f9fa;color:var(--color-text-secondary)" />
+        </div>
+
+        <div class="field">
+          <label class="field__label">Cabin</label>
+          <input class="field__input" id="wp-cabin-category" type="text" readonly
+                 style="background:#f8f9fa;color:var(--color-text-secondary)" />
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="wp-price-paid">Price you paid (USD)
+            <span class="label-hint">(confirm or adjust)</span>
+          </label>
+          <input class="field__input" id="wp-price-paid" type="number"
+                 min="100" step="1" placeholder="e.g. 1749" />
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="wp-perks">Perks included
+            <span class="label-hint">(Optional)</span>
+          </label>
+          <input class="field__input" id="wp-perks" type="text"
+                 placeholder="e.g. free gratuities, beverage package" />
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="wp-final-payment">Final payment date
+            <span class="label-hint">(Last day to reprice)</span>
+          </label>
+          <input class="field__input" id="wp-final-payment" type="date" />
+        </div>
+
+        <div id="watch-panel-error" class="field-error"></div>
+
+        <div style="display:flex;gap:12px;align-items:center;">
+          <button class="btn btn--primary" id="watch-panel-submit" type="submit">
+            Start watching
+          </button>
+          <span id="watch-panel-loading" style="display:none;font-size:13px;color:var(--color-text-secondary)">
+            Registering...
+          </span>
+        </div>
+
+      </form>
+
+      <div id="watch-panel-success" style="display:none">
+        <div class="watch-panel__success">
+          <div class="watch-panel__success-icon">&#10003;</div>
+          <h3>You're watching this sailing.</h3>
+          <p>We'll alert you when the fare drops enough to reprice. You can manage your watches on the <a href="watch.html">Watch page</a>.</p>
+          <button class="btn btn--text" id="watch-panel-done">Done</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="js/match.js"></script>
+  <div class="contact-attribution">Contact: Moe Shamim</div>
+</body>
+</html>

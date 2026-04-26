@@ -1,0 +1,36 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - build
+      - --tag
+      - "us-central1-docker.pkg.dev/${PROJECT_ID}/cruisewise/app:${SHORT_SHA}"
+      - --tag
+      - "us-central1-docker.pkg.dev/${PROJECT_ID}/cruisewise/app:latest"
+      - .
+
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - push
+      - "--all-tags"
+      - "us-central1-docker.pkg.dev/${PROJECT_ID}/cruisewise/app"
+
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - cruisewise
+      - --image=us-central1-docker.pkg.dev/${PROJECT_ID}/cruisewise/app:${SHORT_SHA}
+      - --region=us-central1
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8082
+      - --set-env-vars=APP_ENV=production
+      - --set-secrets=OPENAI_API_KEY=openai-api-key:latest,DATABASE_URL=cruisewise-db-url:latest
+
+images:
+  - "us-central1-docker.pkg.dev/${PROJECT_ID}/cruisewise/app:${SHORT_SHA}"
+  - "us-central1-docker.pkg.dev/${PROJECT_ID}/cruisewise/app:latest"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

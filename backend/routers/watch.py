@@ -7,10 +7,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.agents.watch_agent import run_watch_check
+from backend.auth import get_user_id_or_guest
 from backend.db import get_pool
 from backend.schemas import BookingRecord, PriceSnapshot, RepriceRecommendation, WatchStatus
 from backend.workers.price_checker import inject_mock_drop, run_price_check
@@ -32,11 +33,18 @@ class HoldResponse(BaseModel):
 
 
 @router.post("/register", response_model=WatchAck, status_code=201)
-async def register_watch(booking: BookingRecord) -> WatchAck:
+async def register_watch(
+    booking: BookingRecord,
+    user_id: str = Depends(get_user_id_or_guest),
+) -> WatchAck:
     """Persist a booking, create its watch row, and take a baseline price snapshot.
 
     The booking_id sent by the client is used as the DB primary key; it must
     be a UUID string. The frontend generates one with crypto.randomUUID().
+
+    user_id is sourced from the Authorization header and overrides whatever
+    booking.user_id contained — clients can never spoof another user's id by
+    posting it in the body.
     """
     logger.info(
         "register_watch: booking_source=%s sailing_id=%s cruise_line=%s ship_name=%s departure_date=%s",
@@ -87,17 +95,17 @@ async def register_watch(booking: BookingRecord) -> WatchAck:
                     booking.departure_date,
                 )
 
-        # Block a second active watch on the same sailing. We don't currently
-        # disambiguate by user_id because the demo doesn't persist it on
-        # bookings (column stays NULL), so checking sailing_id + active is the
-        # tightest signal we have. Surfaces 409 with the existing booking_id
-        # so the client can deep-link to the Watch page.
+        # Block a second active watch on the same sailing for the SAME user.
+        # Different users can each watch the same sailing — that's expected.
+        # The 409 detail carries the existing booking_id so the client can
+        # deep-link to the Watch page.
         existing = await conn.fetchval(
             "SELECT w.booking_id FROM watches w "
             "JOIN bookings b ON b.id = w.booking_id "
-            "WHERE b.sailing_id = $1 AND w.active = TRUE "
+            "WHERE b.sailing_id = $1 AND b.user_id = $2 AND w.active = TRUE "
             "LIMIT 1",
             booking.sailing_id,
+            user_id,
         )
         if existing is not None:
             raise HTTPException(
@@ -105,13 +113,16 @@ async def register_watch(booking: BookingRecord) -> WatchAck:
             )
 
         # Idempotent: if the same booking_id is registered twice, second time wins.
+        # Note: user_id from the Authorization header overrides whatever the
+        # client posted on the body, so re-registering preserves ownership.
         await conn.execute(
             "INSERT INTO bookings "
-            "(id, sailing_id, cruise_line, ship_name, departure_date, "
+            "(id, user_id, sailing_id, cruise_line, ship_name, departure_date, "
             " cabin_category, cabin_number, price_paid_usd, perks_at_booking, "
             " booking_source, final_payment_date, created_at) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13) "
             "ON CONFLICT (id) DO UPDATE SET "
+            " user_id=EXCLUDED.user_id, "
             " sailing_id=EXCLUDED.sailing_id, "
             " cruise_line=EXCLUDED.cruise_line, "
             " ship_name=EXCLUDED.ship_name, "
@@ -123,6 +134,7 @@ async def register_watch(booking: BookingRecord) -> WatchAck:
             " booking_source=EXCLUDED.booking_source, "
             " final_payment_date=EXCLUDED.final_payment_date",
             booking_uuid,
+            user_id,
             booking.sailing_id,
             booking.cruise_line,
             booking.ship_name,
@@ -163,8 +175,11 @@ async def register_watch(booking: BookingRecord) -> WatchAck:
 
 
 @router.get("/status/{booking_id}", response_model=WatchStatus)
-async def get_watch_status(booking_id: str) -> WatchStatus:
-    """Return the latest WatchStatus for a booking, or 404."""
+async def get_watch_status(
+    booking_id: str,
+    user_id: str = Depends(get_user_id_or_guest),
+) -> WatchStatus:
+    """Return the latest WatchStatus for a booking, or 404. Scoped to caller."""
     try:
         booking_uuid = uuid.UUID(booking_id)
     except ValueError as exc:
@@ -172,6 +187,7 @@ async def get_watch_status(booking_id: str) -> WatchStatus:
 
     pool = get_pool()
     async with pool.acquire() as conn:
+        await _assert_owned(conn, booking_uuid, user_id)
         watch = await conn.fetchrow(
             "SELECT watching_since, checks_performed, reprice_events_count, active "
             "FROM watches WHERE booking_id = $1",
@@ -218,11 +234,15 @@ async def get_watch_status(booking_id: str) -> WatchStatus:
 
 
 @router.get("/list")
-async def list_watches() -> list[dict[str, Any]]:
-    """Return all active watches with their latest price snapshot.
+async def list_watches(
+    user_id: str = Depends(get_user_id_or_guest),
+) -> list[dict[str, Any]]:
+    """Return all active watches owned by the calling user.
 
     The bookings table's primary key column is `id` (not `booking_id`), so the
-    join projects `w.booking_id` as the canonical id.
+    join projects `w.booking_id` as the canonical id. The `WHERE b.user_id = $1`
+    clause is what gives us per-user data isolation — every other user's
+    watches are invisible to this caller.
     """
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -252,9 +272,10 @@ async def list_watches() -> list[dict[str, Any]]:
                 ORDER BY checked_at DESC
                 LIMIT 1
             ) ph ON TRUE
-            WHERE w.active = TRUE
+            WHERE w.active = TRUE AND b.user_id = $1
             ORDER BY w.watching_since DESC
-            """
+            """,
+            user_id,
         )
     out: list[dict[str, Any]] = []
     for r in rows:
@@ -265,10 +286,22 @@ async def list_watches() -> list[dict[str, Any]]:
 
 
 @router.post("/check/{booking_id}")
-async def check_now(booking_id: str) -> Any:
+async def check_now(
+    booking_id: str,
+    user_id: str = Depends(get_user_id_or_guest),
+) -> Any:
     """Trigger a watch check immediately. Returns the recommendation if any,
-    or {action: 'hold', reason: ...} if below threshold."""
+    or {action: 'hold', reason: ...} if below threshold. 404 if the booking
+    doesn't exist or isn't owned by the caller."""
+    try:
+        booking_uuid = uuid.UUID(booking_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=f"Invalid booking_id: {booking_id}") from exc
+
     pool = get_pool()
+    async with pool.acquire() as conn:
+        await _assert_owned(conn, booking_uuid, user_id)
+
     try:
         recommendation = await run_watch_check(booking_id, pool)
     except Exception:
@@ -286,19 +319,58 @@ async def check_now(booking_id: str) -> Any:
 
 
 @router.post("/demo-drop/{booking_id}")
-async def demo_drop(booking_id: str) -> dict[str, Any]:
+async def demo_drop(
+    booking_id: str,
+    user_id: str = Depends(get_user_id_or_guest),
+) -> dict[str, Any]:
     """DEMO ONLY — inject a simulated price drop into price_history.
 
     Not exposed in production. Picks a random drop in [$50, $700] each call so
     successive demos exercise the hold path (sub-threshold) as well as the
     reprice path. Returns the drop amount alongside the new snapshot.
+    Scoped to caller — 404 if the booking isn't owned by the requesting user.
     """
+    try:
+        booking_uuid = uuid.UUID(booking_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=f"Invalid booking_id: {booking_id}") from exc
+
     pool = get_pool()
+    async with pool.acquire() as conn:
+        await _assert_owned(conn, booking_uuid, user_id)
+
     drop_amount = random.randint(50, 700)
     snapshot = await inject_mock_drop(booking_id, pool, drop_amount_usd=drop_amount)
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"Booking {booking_id} not found")
     return {"drop_amount_usd": drop_amount, "snapshot": snapshot}
+
+
+@router.get("/history/{booking_id}")
+async def get_price_history(
+    booking_id: str,
+    user_id: str = Depends(get_user_id_or_guest),
+) -> list[dict[str, Any]]:
+    """Return up to 20 most-recent price snapshots for a booking the caller owns."""
+    try:
+        booking_uuid = uuid.UUID(booking_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Invalid booking_id: {booking_id}"
+        ) from exc
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await _assert_owned(conn, booking_uuid, user_id)
+        rows = await conn.fetch(
+            "SELECT current_price_usd, checked_at, source "
+            "FROM price_history "
+            "WHERE booking_id = $1 "
+            "ORDER BY checked_at DESC "
+            "LIMIT 20",
+            booking_uuid,
+        )
+    return [dict(r) for r in rows]
 
 
 @router.get("/ships/{cruise_line}")
@@ -319,9 +391,13 @@ async def get_ships(cruise_line: str) -> list[str]:
 
 
 @router.delete("/{booking_id}")
-async def remove_watch(booking_id: str) -> dict[str, bool]:
+async def remove_watch(
+    booking_id: str,
+    user_id: str = Depends(get_user_id_or_guest),
+) -> dict[str, bool]:
     """Deactivate a watch. Keeps the booking and price history; only flips
-    watches.active to FALSE so /list (which filters active=TRUE) drops it."""
+    watches.active to FALSE so /list (which filters active=TRUE) drops it.
+    Scoped to caller — 404 if the booking isn't owned by the requesting user."""
     try:
         booking_uuid = uuid.UUID(booking_id)
     except ValueError as exc:
@@ -331,6 +407,7 @@ async def remove_watch(booking_id: str) -> dict[str, bool]:
 
     pool = get_pool()
     async with pool.acquire() as conn:
+        await _assert_owned(conn, booking_uuid, user_id)
         await conn.execute(
             "UPDATE watches SET active = FALSE WHERE booking_id = $1",
             booking_uuid,
@@ -349,3 +426,17 @@ def _coerce_perks(raw):
     if isinstance(raw, str):
         return json.loads(raw)
     return list(raw)
+
+
+async def _assert_owned(conn, booking_uuid: uuid.UUID, user_id: str) -> None:
+    """Raise 404 if the booking doesn't exist, 403 if it exists but isn't
+    owned by user_id. Keeps the not-found vs not-yours distinction explicit
+    so /status/<bad-uuid> still returns 404 (existing test contract)."""
+    owner = await conn.fetchval(
+        "SELECT user_id FROM bookings WHERE id = $1",
+        booking_uuid,
+    )
+    if owner is None:
+        raise HTTPException(status_code=404, detail=f"No watch for booking {booking_uuid}")
+    if owner != user_id:
+        raise HTTPException(status_code=403, detail="Not your booking")

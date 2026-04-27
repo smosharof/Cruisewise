@@ -7,12 +7,18 @@
  * can branch on 422 / 500 etc.
  */
 
+import { getAuthHeader } from "./auth.js";
+
 const BASE = "/api";
 
 async function request(method, path, body) {
+  const authHeader = await getAuthHeader();
   const opts = {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: authHeader,
+    },
   };
   if (body !== undefined) {
     opts.body = JSON.stringify(body);

@@ -204,11 +204,15 @@ def test_watch_status_not_found(client: TestClient) -> None:
 
 def test_watch_check_below_threshold_returns_hold(client: TestClient) -> None:
     valid_uuid = str(uuid.uuid4())
+    # _assert_owned() now reads bookings.user_id; fake fetchval returns "guest"
+    # so the auth scope check matches the no-Authorization-header default.
+    fake_pool = MagicMock()
+    fake_pool.acquire = lambda: _fake_acquire_factory(val="guest")
     with patch(
         "backend.routers.watch.run_watch_check",
         new_callable=AsyncMock,
         return_value=None,
-    ), patch("backend.routers.watch.get_pool", return_value=MagicMock()):
+    ), patch("backend.routers.watch.get_pool", return_value=fake_pool):
         resp = client.post(f"/api/watch/check/{valid_uuid}")
     assert resp.status_code == 200
     data = resp.json()
@@ -238,7 +242,12 @@ def test_account_me(client: TestClient) -> None:
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["email"] == "albert.einstein@netscape.com"
+    # No Authorization header → resolves to the literal "guest" user.
+    # Email is the placeholder for guests; signed-in users get None and the
+    # frontend sources email from Firebase auth state instead.
+    assert data["is_guest"] is True
+    assert data["user_id"] == "guest"
+    assert data["email"] == "guestuser@domain.com"
     assert isinstance(data["active_watches"], int)
     assert isinstance(data["matches_run"], int)
     assert data["active_watches"] == 3

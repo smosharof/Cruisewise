@@ -14,7 +14,69 @@ The **Watch** product takes any booking — whether the user got it through Crui
 
 ---
 
-## 2. Architecture Overview
+## 2. How to Test the App
+
+**Live URL:** https://cruisewise-316936340666.us-central1.run.app
+
+### Test the Match product
+
+1. Navigate to the live URL and click **Match** in the navbar
+2. Fill in the intake form:
+   - Travel party: A couple
+   - Experience: First timer
+   - Budget: $1,500–$2,500
+   - Trip length: Week (7 nights)
+   - Departure window: any future 3-month window
+   - Region: Caribbean
+   - Departure port: Miami
+   - Vibe: Relaxation
+3. Click **Find my cruise**
+4. Wait ~15 seconds for results
+5. Verify: 3 ranked result cards appear, each with a vibe-fit percentage, fit reasoning paragraph that references your specific inputs (couple, relaxation, budget), strengths/concerns columns, and a "View sailing" affiliate link
+6. Verify: A synthesized top-pick callout explains why the #1 result beats the runners-up
+7. Click **"Watch this price"** on any result — a slide-in panel should appear pre-filled with the sailing details
+
+### Test the Watch product (requires Google Sign-In)
+
+1. Click **"Sign in with Google"** in the navbar — a Google OAuth popup appears
+2. Sign in with any Google account
+3. Verify: your name and profile picture appear in the navbar
+4. From a Match result, click **"Watch this price"** → fill in a final payment date → click **"Start watching"**
+5. Navigate to the **Watch** page — your new watch card appears with paid price and current price
+6. Click **"Check now"** — the price is fetched and the "Last checked" timestamp updates
+7. Click **"Show price history"** — a deduplicated timeline of price snapshots expands
+
+### Test the price drop alert (admin trigger)
+
+1. Ensure you are signed in with a Google account
+2. Open a second tab and navigate to `/admin.html`
+3. Find your watch in the list — set drop amount to `300` and click **"Trigger price drop"**
+4. Switch back to the Watch page and refresh — the card should show green `Current: $X ↓ -$300`
+5. Check the Gmail inbox for the signed-in Google account — a reprice alert email should arrive from `noreply@moeshamim.com` within 30 seconds containing the ship details, savings amount, and a pre-filled travel agent email
+
+### Test per-user data isolation
+
+1. Open an incognito window and sign in with a **different** Google account
+2. Navigate to the Watch page — it should be empty (no watches from the first account visible)
+3. This confirms all data is scoped per Firebase UID
+
+### Test guest mode
+
+1. Open an incognito window without signing in
+2. Navigate to the Watch page — shows "No watches yet" and a navbar sign-in button
+3. Run a Match search — results appear and work normally
+4. Click "Watch this price" — watch is registered under a guest UUID
+5. Sign in with Google — the guest watch merges into your real account automatically
+
+### Run the test suite
+
+```bash
+uv run pytest -v   # 67 passed
+```
+
+---
+
+## 3. Architecture Overview
 
 ### Match flow
 
@@ -74,7 +136,7 @@ flowchart TD
 
 ---
 
-## 3. Data Sources
+## 4. Data Sources
 
 ### Live cruise inventory (Apify scrapers)
 
@@ -105,7 +167,7 @@ The `ship_researcher` sub-agent (`backend/agents/subagents/ship_researcher.py`) 
 
 ---
 
-## 4. Tech Stack
+## 5. Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -117,12 +179,14 @@ The `ship_researcher` sub-agent (`backend/agents/subagents/ship_researcher.py`) 
 | Auth | Google Cloud ADC — no API keys in environment; Cloud Run service account provides credentials automatically |
 | Frontend | Vanilla JS, HTML, CSS — two-tab SPA (Match, Watch) plus account page |
 | Deployment | Google Cloud Run, Artifact Registry (`--source .` build via Cloud Build) |
-| Secrets | GCP Secret Manager (`DATABASE_URL` only; LLM auth via ADC) |
+| Authentication | Firebase Auth (Google Sign-In) + guest UUID mode; Firebase Admin SDK for server-side token verification |
+| Email delivery | Resend — transactional email via `noreply@moeshamim.com` (domain verified); sends reprice alerts when price drops ≥ $50 below booked fare |
+| Secrets | GCP Secret Manager — `DATABASE_URL`, `APIFY_API_TOKEN`, `RESEND_API_KEY`; LLM auth via ADC |
 | GCP Project | `ms7285-ieor4576-proj03`, region `us-central1` |
 
 ---
 
-## 5. Features by Tab
+## 6. Features by Tab
 
 ### Match tab
 - Intake form: chip-based selectors for travel party, cruise experience, preferred cruise lines (optional, multi-select with loyalty member hint), budget per person, trip length, departure window, regions, departure ports (dynamic multi-select dropdown with region-to-port auto-population), and vibe — with inline field-level validation errors and soft advisory messages for budget/vibe mismatches
@@ -133,16 +197,73 @@ The `ship_researcher` sub-agent (`backend/agents/subagents/ship_researcher.py`) 
 
 ### Watch tab
 - **Watch panel**: slides in from Match results page when user clicks "Watch this price" — pre-fills cruise line, ship, date, cabin, and starting price; user only enters final payment date to confirm
-- **Multi-watch dashboard**: all active watches displayed as cards, each showing ship name, cruise line, departure date, cabin category, paid price, current price, last checked time, checks performed, and reprice event count
-- **Add another watch**: two-path selector — "Find a sailing via Match" (redirects to Match) or "I already have a booking" (manual form with dynamic ship dropdown populated from DB by cruise line)
-- **Duplicate prevention**: 409 returned when same sailing + user combination already has an active watch; frontend shows "You're already watching this sailing. Visit the Watch page to check its status."
-- **Simulate price drop**: random $50–$700 drop injected for demo purposes
-- **Remove watch**: inline confirmation prompt on each card; soft-deletes the watch record
-- **Price tracking state**: cards show "Paid: $X · Current: $Y · Last checked [time]" when baseline exists; "Click Check now to fetch the current fare" when in-inventory but not yet checked; "This sailing isn't in our inventory yet — price monitoring unavailable" (orange) for external bookings not resolved to a DB sailing
+- **Multi-watch dashboard**: all active watches displayed as cards sorted by reprice events first, then by watching_since. Each card shows ship name, cruise line, departure date, cabin category, paid price, current price with green ↓ savings indicator when dropped, last checked time, checks performed, and reprice event count
+- **Price drop indicator**: subtle inline green `Current: $X ↓ -$Y` when current price is below paid price — no banner, no confetti
+- **Price history**: collapsible timeline per card showing deduplicated price snapshots (consecutive same-price entries hidden); toggled via "Show/Hide price history" button alongside "Check now"
+- **Add another watch**: two-path selector — "Find a sailing via Match" or "I already have a booking" (manual form with dynamic ship dropdown by cruise line)
+- **Duplicate prevention**: 409 returned when same sailing + user already has an active watch
+- **Remove watch**: inline confirmation on each card; soft-deletes the watch record
+- **Reprice email**: when net benefit ≥ $50, reprice_writer LLM generates a pre-filled travel agent email rendered in a monospace block with copy-to-clipboard; email also delivered automatically to the user's Gmail via Resend
 
 ---
 
-## 6. Technical Design Decisions
+## 7. Authentication
+
+Cruisewise uses **Firebase Auth** with Google Sign-In. Authentication is optional — users can browse and use the app without signing in, but their data is scoped to a browser-local guest UUID and will not persist across devices or sessions.
+
+### Sign-in flow
+- A "Sign in with Google" button appears in the navbar on all pages
+- Clicking it opens a Google OAuth popup — no username or password stored by Cruisewise
+- On successful sign-in, the frontend calls `POST /api/account/merge-guest` to reassign any watches or match intakes created during the guest session to the real Firebase UID
+- All subsequent API calls include an `Authorization: Bearer <Firebase ID token>` header; the backend verifies the token via Firebase Admin SDK
+
+### Guest mode
+- Users who do not sign in receive a browser-local UUID (`guest-<uuid>`) stored in `localStorage`
+- Guest watches and intakes are stored in the DB under the guest UUID
+- Signing in merges guest data into the real account automatically
+- Guest users see a "Sign in with Google" button in the navbar; no blocking wall
+
+### Signed-out experience
+- Visiting the Watch or Account page while signed out shows "No watches yet" and the navbar sign-in button
+- No data from other users is ever visible to a signed-out session
+
+### Per-user data isolation
+- All `bookings`, `watches`, and `match_intakes` rows carry a `user_id TEXT` column
+- Every API endpoint that reads or writes user data filters by the authenticated `user_id`
+- Ownership is verified server-side on delete operations (403 if mismatch)
+
+### Firebase project
+- Firebase project: `ms7285-ieor4576-proj03` (same as GCP project)
+- Authorized domains: `localhost`, `cruisewise-316936340666.us-central1.run.app`
+- Sign-in provider: Google only
+
+---
+
+## 8. Admin Page
+
+A hidden demo tool accessible at `/admin.html` — not linked from the navbar. Navigate directly by typing the URL.
+
+### Purpose
+The admin page allows triggering simulated price drops on any active watch belonging to a real authenticated user. This is used on demo day to show the full Watch flow end-to-end without waiting for a real fare change.
+
+### What it shows
+Each active watch card displays: ship name, cruise line, departure date, cabin category, user ID prefix, paid price, and current price. Only watches belonging to real Firebase-authenticated users are shown — guest and demo data are excluded.
+
+### How to trigger a price drop
+1. Navigate to `https://cruisewise-316936340666.us-central1.run.app/admin.html`
+2. Find the booking you want to drop
+3. Set the drop amount (default $300, range $50–$700)
+4. Click **"Trigger price drop"**
+5. The backend injects a mock snapshot and immediately runs `run_watch_check`
+6. If net benefit ≥ $50, a `RepriceRecommendation` is generated and a reprice email is sent to the user's Gmail
+7. The user's Watch page updates automatically on next load showing the green price drop indicator
+
+### Security note
+There is no authentication on `/api/admin/*`. The URL obscurity is the only protection. Do not publicize the admin URL.
+
+---
+
+## 9. Technical Design Decisions
 
 ### Agent framework
 Three distinct agents — `ship_researcher`, `synthesizer`, `reprice_writer` — each declared with `agents.Agent(model=..., output_type=...)` via the OpenAI Agents SDK. The SDK enforces structured output contracts at every LLM boundary, preventing malformed responses from propagating downstream.
@@ -193,7 +314,7 @@ When a user selects preferred cruise lines (e.g. loyalty members), `_apply_line_
 
 ---
 
-## 7. Setup & Running Locally
+## 10. Setup & Running Locally
 
 ### Prerequisites
 - Cloud SQL Auth Proxy running on port 5433 (not 5432 — avoid collision with a local Postgres)
@@ -203,12 +324,15 @@ When a user selects preferred cruise lines (e.g. loyalty members), `_apply_line_
 ### Start the server
 
 ```bash
-# Terminal 1 — Cloud SQL Auth Proxy
+# Terminal 1 — Cloud SQL Auth Proxy (auto-starts via launchd on dev machine)
 cloud-sql-proxy ms7285-ieor4576-proj03:us-central1:cruisewise-db --port 5433
 
-# Terminal 2 — FastAPI server
+# Terminal 2 — FastAPI server (reads all secrets from Secret Manager)
 cd <project-dir>
-uv run uvicorn backend.main:app --port 8082 --reload
+RESEND_API_KEY=$(gcloud secrets versions access latest --secret=RESEND_API_KEY --project=ms7285-ieor4576-proj03) \
+DATABASE_URL="postgresql://cruisewise-app:$(gcloud secrets versions access latest --secret=DATABASE_URL --project=ms7285-ieor4576-proj03 | python3 -c "import sys; from urllib.parse import urlparse; u=urlparse(sys.stdin.read().strip()); print(u.password)")@127.0.0.1:5433/cruisewise" \
+APP_ENV=development \
+uv run uvicorn backend.main:app --port 8082
 ```
 
 App available at: `http://localhost:8082`
@@ -223,6 +347,11 @@ PGPASSWORD=<password> psql "host=localhost port=5433 dbname=cruisewise user=crui
 ```
 
 The migration creates `uuid-ossp` and `vector`, then the eight tables (`users`, `match_intakes`, `match_results`, `bookings`, `watches`, `price_history`, `reprice_events`, `review_chunks`) and their indexes.
+
+Subsequent migrations to apply in order:
+- `backend/db/migrations/002_sailings.sql` — sailings table + 3 indexes (date, cruise_line, GIN destination_names)
+- `backend/db/migrations/003_add_currency.sql` — `ALTER TABLE sailings ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'`
+- `backend/db/migrations/004_add_user_id.sql` — converts user_id columns from UUID FK to TEXT to support Firebase UIDs; adds indexes on `match_intakes.user_id` and `bookings.user_id`
 
 ### Run tests
 
@@ -306,7 +435,7 @@ AND a.duration_nights = b.duration_nights;
 
 ---
 
-## 8. Deployment
+## 11. Deployment
 
 ### Build and deploy in one step (`--source .` builds via Cloud Build)
 
@@ -314,9 +443,10 @@ AND a.duration_nights = b.duration_nights;
 gcloud run deploy cruisewise \
   --source . \
   --region us-central1 \
+  --project ms7285-ieor4576-proj03 \
   --service-account cruisewise-runner@ms7285-ieor4576-proj03.iam.gserviceaccount.com \
   --add-cloudsql-instances ms7285-ieor4576-proj03:us-central1:cruisewise-db \
-  --set-secrets DATABASE_URL=DATABASE_URL:latest,APIFY_API_TOKEN=APIFY_API_TOKEN:latest \
+  --set-secrets DATABASE_URL=DATABASE_URL:latest,APIFY_API_TOKEN=APIFY_API_TOKEN:latest,RESEND_API_KEY=RESEND_API_KEY:latest \
   --set-env-vars APP_ENV=production,GCP_PROJECT=ms7285-ieor4576-proj03,GCP_LOCATION=us-central1,LLM_MODEL=google/gemini-2.5-flash \
   --allow-unauthenticated \
   --min-instances 0 \
@@ -342,13 +472,18 @@ Note: Cloud Build requires the Compute Engine default service account (`PROJECT_
 | `POST` | `/api/match/intake` | Run a match for the submitted intake; returns full `MatchResult` synchronously (HTTP 201) |
 | `GET` | `/api/match/results/{intake_id}` | Fetch the most recent persisted `MatchResult` for an intake |
 | `POST` | `/api/watch/register` | Persist a `BookingRecord`, create a watch row, write the baseline price snapshot |
+| `GET` | `/api/watch/list` | Return all active watches for the authenticated user |
 | `GET` | `/api/watch/status/{booking_id}` | Return current `WatchStatus` with the latest snapshot |
 | `POST` | `/api/watch/check/{booking_id}` | Run a watch check immediately; returns `RepriceRecommendation` or `{action: "hold"}` |
-| `POST` | `/api/watch/demo-drop/{booking_id}` | Demo-only — inject a $300 mock price drop into `price_history` |
+| `GET` | `/api/watch/history/{booking_id}` | Return deduplicated price history snapshots for a booking |
+| `GET` | `/api/watch/ships/{cruise_line}` | Return ship names for a given cruise line (populates watch registration dropdown) |
+| `DELETE` | `/api/watch/{booking_id}` | Soft-delete a watch (sets active=false) |
 | `POST` | `/api/booking/confirm` | Confirm a Match-driven booking and auto-enroll it into Watch |
-| `GET` | `/api/account/me` | Return the current user's account summary (stub until auth is wired) |
-| `GET` | `/health` | Health check (use this on the live URL — `/healthz` is intercepted by GFE) |
-| `GET` | `/healthz` | Health check alias (works locally and in TestClient; intercepted by Cloud Run frontend in production) |
+| `GET` | `/api/account/me` | Return the authenticated user's email (from Firebase), active watch count, and matches run |
+| `POST` | `/api/account/merge-guest` | Merge guest UUID watches/intakes into a real Firebase UID on sign-in |
+| `GET` | `/api/admin/watches` | Return all active watches for real authenticated users (excludes guests and demo data) |
+| `POST` | `/api/admin/trigger-drop/{booking_id}` | Inject a mock price drop and run the watch agent — demo use only |
+| `GET` | `/health` | Health check |
 | `GET` | `/api/docs` | OpenAPI Swagger UI |
 | `GET` | `/api/redoc` | OpenAPI ReDoc |
 
@@ -365,11 +500,13 @@ cruisewise/
 │   ├── db.py                                # asyncpg pool + pgvector codec registration (public schema)
 │   ├── errors.py                            # Domain error classes (NoSailingsFound, ValidationError, etc.)
 │   ├── schemas.py                           # All Pydantic contracts (MatchIntake, ShipAssessment, MatchResult, BookingRecord, RepriceRecommendation, etc.)
+│   ├── auth.py                              # Firebase Admin SDK token verification; get_current_user_id (strict 401), get_user_id_or_guest (tolerant guest UUID fallback)
 │   ├── routers/
 │   │   ├── match.py                         # POST /api/match/intake, GET /api/match/results/{id} — DB-backed
-│   │   ├── watch.py                         # POST /api/watch/register, /check, /demo-drop, GET /status
+│   │   ├── watch.py                         # POST /api/watch/register, /list, /check, /demo-drop, /history, /ships, DELETE /{id} — per-user scoped
 │   │   ├── booking.py                       # POST /api/booking/confirm — Match→Watch handoff
-│   │   └── account.py                       # GET /api/account/me — auth stub
+│   │   ├── account.py                       # GET /api/account/me, POST /api/account/merge-guest
+│   │   └── admin.py                         # GET /api/admin/watches, POST /api/admin/trigger-drop/{id} — demo admin, no auth gate
 │   ├── agents/
 │   │   ├── match_agent.py                   # run_match orchestrator + _gather_with_early_exit + _safe_research wrapper
 │   │   ├── watch_agent.py                   # run_watch_check — reads two latest snapshots, gates LLM on price_math threshold
@@ -382,6 +519,7 @@ cruisewise/
 │   │   ├── apify_client.py                  # run_actor() async wrapper — run-sync-get-dataset-items, swallows 404/timeout/HTTP errors
 │   │   ├── price_math.py                    # compute_benefit (pure Python TypedDict), REPRICE_THRESHOLD_USD = $50
 │   │   ├── reviews_rag.py                   # retrieve_by_embedding (HNSW cosine), retrieve_by_ship (ILIKE fallback)
+│   │   ├── email_sender.py                  # send_reprice_email() via Resend — from noreply@moeshamim.com, HTML template with savings table + email draft block
 │   │   ├── email_gen.py                     # Placeholder — superseded by reprice_writer
 │   │   └── notifier.py                      # Console-only notifier stub
 │   ├── workers/
@@ -390,18 +528,23 @@ cruisewise/
 │   └── db/migrations/
 │       ├── 001_initial.sql                  # PostgreSQL + pgvector schema (8 tables, HNSW index)
 │       ├── 002_sailings.sql                 # sailings table + 3 indexes (date, cruise_line, GIN destination_names)
-│       └── 003_add_currency.sql             # ALTER TABLE sailings ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'
+│       ├── 003_add_currency.sql             # ALTER TABLE sailings ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'
+│       └── 004_add_user_id.sql              # Converts user_id UUID FK → TEXT on match_intakes + bookings; adds btree indexes
 ├── frontend/
 │   ├── index.html                           # Landing page with Match / Watch CTAs
 │   ├── match.html                           # 9-field intake form + results panel
 │   ├── watch.html                           # Booking registration form + watch dashboard
-│   ├── account.html                         # Account stub
+│   ├── account.html                         # Account page — email + counts, scoped to signed-in Firebase user
+│   ├── admin.html                           # Hidden admin page — not linked from navbar; access directly at /admin.html
 │   ├── css/style.css                        # Design tokens, components (radio cards, chips, callouts, vibe-bar)
 │   └── js/
-│       ├── api.js                           # Single fetch wrapper, throws Error with .status on non-2xx
-│       ├── match.js                         # Intake collection, validation, results renderer
-│       ├── watch.js                         # Register form, dashboard, check-now / simulate-drop, copy-email
-│       └── account.js                       # Account renderer
+│       ├── api.js                           # Single fetch wrapper with Authorization header, throws Error with .status on non-2xx
+│       ├── auth.js                          # Firebase init, getAuthState(), getCurrentUserId(), getGuestId(), getAuthHeader(), signInWithGoogle() with guest merge
+│       ├── auth-ui.js                       # renderAuthButton() with Google avatar + initial fallback; renderGuestBanner() (used internally)
+│       ├── match.js                         # Intake collection, validation, results renderer, watch panel
+│       ├── watch.js                         # Multi-watch dashboard, per-card actions, price-history timeline
+│       ├── admin.js                         # Cross-user watch list, trigger-drop button per card
+│       └── account.js                       # Account renderer — Firebase email + per-user counts
 ├── tests/
 │   ├── test_cruise_inventory.py             # 24 inventory tests (filters, integrity, IDs, ordering)
 │   ├── test_price_math.py                   # 13 price-math tests (perks, deltas, threshold)

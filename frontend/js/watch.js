@@ -8,19 +8,37 @@
  */
 
 import { registerWatch } from "./api.js";
+import { auth, onAuthStateChanged, getAuthHeader } from "./auth.js";
 
 const API_BASE = "/api";
+
+async function authFetch(url, options = {}) {
+  const authHeader = await getAuthHeader();
+  return fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: authHeader,
+      ...(options.headers || {}),
+    },
+  });
+}
 
 function init() {
   bindRadioStyling();
   bindRegisterForm();
   bindAddFlow();
   loadAllWatches();
+  // Refresh the watch list when the user signs in or out so the dashboard
+  // reflects the new identity without a manual reload.
+  onAuthStateChanged(auth, () => {
+    loadAllWatches();
+  });
 }
 
 async function loadAllWatches() {
   try {
-    const res = await fetch(`${API_BASE}/watch/list`);
+    const res = await authFetch(`${API_BASE}/watch/list`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const watches = await res.json();
     if (!Array.isArray(watches) || watches.length === 0) {
@@ -62,22 +80,87 @@ function showDashboard(watches) {
   _hideAllWrappers();
   document.getElementById("watch-dashboard-wrapper").style.display = "";
 
-  const container = document.getElementById("watch-status-card");
-  container.innerHTML = watches.map(renderWatchCard).join("");
+  // Sort: cards with reprice events first, then by watching_since desc — so a
+  // freshly-detected price drop floats to the top of the dashboard.
+  const sorted = [...watches].sort((a, b) => {
+    if ((b.reprice_events_count || 0) !== (a.reprice_events_count || 0)) {
+      return (b.reprice_events_count || 0) - (a.reprice_events_count || 0);
+    }
+    return new Date(b.watching_since) - new Date(a.watching_since);
+  });
 
-  watches.forEach((w) => {
+  const container = document.getElementById("watch-status-card");
+  container.innerHTML = sorted.map(renderWatchCard).join("");
+
+  sorted.forEach((w) => {
     document
       .getElementById(`check-btn-${w.booking_id}`)
       ?.addEventListener("click", () => doCheck(w.booking_id));
-    document
-      .getElementById(`demo-btn-${w.booking_id}`)
-      ?.addEventListener("click", () => doDemoDropThenCheck(w.booking_id));
     document
       .getElementById(`remove-btn-${w.booking_id}`)
       ?.addEventListener("click", () => {
         showRemoveConfirm(w.booking_id, w.ship_name || "this sailing");
       });
+    document
+      .getElementById(`history-toggle-${w.booking_id}`)
+      ?.addEventListener("click", () => toggleHistory(w.booking_id));
   });
+}
+
+async function toggleHistory(bookingId) {
+  const panel = document.getElementById(`history-${bookingId}`);
+  const btn = document.getElementById(`history-toggle-${bookingId}`);
+  if (!panel || !btn) return;
+
+  if (panel.style.display === "none") {
+    panel.style.display = "block";
+    btn.textContent = "Hide price history";
+
+    try {
+      const res = await authFetch(`${API_BASE}/watch/history/${bookingId}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const snapshots = await res.json();
+
+      if (!Array.isArray(snapshots) || snapshots.length === 0) {
+        panel.innerHTML =
+          '<p style="font-size:12px;color:var(--color-text-secondary);padding:8px 0">No history yet.</p>';
+        return;
+      }
+
+      // Snapshots arrive newest-first. Dedupe so only price *changes* show up
+      // — if Check now was clicked four times in a row at the same price, the
+      // user sees one row instead of four. The newest is always kept.
+      const deduped = snapshots.filter((s, i) => {
+        if (i === 0) return true;
+        return s.current_price_usd !== snapshots[i - 1].current_price_usd;
+      });
+
+      panel.innerHTML = `
+        <div class="price-history__list">
+          ${deduped
+            .map((s) => {
+              const date = new Date(s.checked_at).toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              });
+              return `<div class="price-history__row">
+                <span class="price-history__date">${escapeHtml(date)}</span>
+                <span class="price-history__price">$${Number(s.current_price_usd).toLocaleString()}</span>
+              </div>`;
+            })
+            .join("")}
+        </div>`;
+    } catch (e) {
+      console.warn("history load failed:", e);
+      panel.innerHTML =
+        '<p style="font-size:12px;color:#d93025">Failed to load history.</p>';
+    }
+  } else {
+    panel.style.display = "none";
+    btn.textContent = "Show price history";
+  }
 }
 
 function showRemoveConfirm(bookingId, shipName) {
@@ -97,7 +180,7 @@ function showRemoveConfirm(bookingId, shipName) {
 
   prompt.querySelector(".remove-confirm__yes").addEventListener("click", async () => {
     try {
-      const res = await fetch(`${API_BASE}/watch/${bookingId}`, { method: "DELETE" });
+      const res = await authFetch(`${API_BASE}/watch/${bookingId}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       card.remove();
       if (document.querySelectorAll(".watch-card").length === 0) {
@@ -129,8 +212,6 @@ function renderWatchCard(w) {
     : "";
   const cabin = escapeHtml(w.cabin_category || "");
   const since = formatDate(w.watching_since);
-  const latestPrice =
-    w.latest_price != null ? `$${formatNumber(w.latest_price)}` : "—";
   const lastChecked = w.last_checked ? formatDateTime(w.last_checked) : "Not yet checked";
   const pricePaid =
     w.price_paid_usd != null ? `$${formatNumber(w.price_paid_usd)}` : "—";
@@ -142,10 +223,20 @@ function renderWatchCard(w) {
   // price monitoring can never produce a snapshot.
   const inInventory = !w.sailing_id?.includes("-watch");
 
-  const pricesHtml = w.latest_price
+  // Inline drop indicator — green "$X ↓ -$Y" pill when current < paid.
+  const hasDrop =
+    w.latest_price && w.price_paid_usd && w.latest_price < w.price_paid_usd;
+  const savings = hasDrop ? w.price_paid_usd - w.latest_price : 0;
+  const currentPriceHtml = w.latest_price
+    ? hasDrop
+      ? `<span style="color:#34a853;font-weight:600;">$${w.latest_price.toLocaleString()} ↓ <span style="font-size:12px;background:#e8f5e9;padding:2px 6px;border-radius:10px;color:#1b5e20;">-$${savings.toLocaleString()}</span></span>`
+      : `<strong>$${w.latest_price.toLocaleString()}</strong>`
+    : null;
+
+  const pricesHtml = currentPriceHtml
     ? `<div class="watch-card__prices">
         <span>Paid: <strong>${pricePaid}</strong></span>
-        <span>Current: <strong>${latestPrice}</strong></span>
+        <span>Current: ${currentPriceHtml}</span>
         <span class="watch-card__checked">Last checked ${escapeHtml(lastChecked)}</span>
        </div>`
     : inInventory
@@ -161,10 +252,6 @@ function renderWatchCard(w) {
             This sailing isn't in our inventory yet &mdash; price monitoring unavailable.
           </span>
          </div>`;
-
-  const simulateBtnHtml = inInventory || w.latest_price
-    ? `<button class="btn btn--text btn--sm" id="demo-btn-${id}" type="button">Simulate price drop</button>`
-    : "";
 
   return `
     <div class="watch-card" id="watch-card-${id}">
@@ -187,11 +274,17 @@ function renderWatchCard(w) {
       ${pricesHtml}
       <div class="watch-card__actions">
         <button class="btn btn--primary btn--sm" id="check-btn-${id}" type="button">Check now</button>
-        ${simulateBtnHtml}
+        <button class="price-history__toggle btn btn--secondary btn--sm"
+                id="history-toggle-${id}" type="button">
+          Show price history
+        </button>
         <span class="loading" id="loading-${id}" style="display:none">
           <span class="spinner"></span>
           <span id="loading-text-${id}">Checking...</span>
         </span>
+      </div>
+      <div class="price-history" id="history-${id}" style="display:none">
+        <div class="price-history__loading">Loading...</div>
       </div>
       <div id="result-${id}"></div>
     </div>`;
@@ -303,7 +396,7 @@ function bindRegisterForm() {
     shipSelect.disabled = true;
 
     try {
-      const res = await fetch(`${API_BASE}/watch/ships/${encodeURIComponent(cruiseLine)}`);
+      const res = await authFetch(`${API_BASE}/watch/ships/${encodeURIComponent(cruiseLine)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ships = await res.json();
       if (!Array.isArray(ships) || ships.length === 0) {
@@ -474,7 +567,7 @@ async function doCheck(bookingId) {
   _setCardLoading(bookingId, true, "Checking current price...");
 
   try {
-    const res = await fetch(`${API_BASE}/watch/check/${bookingId}`, { method: "POST" });
+    const res = await authFetch(`${API_BASE}/watch/check/${bookingId}`, { method: "POST" });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
     if (data.action === "hold") {
@@ -495,12 +588,12 @@ async function doDemoDropThenCheck(bookingId) {
   _setCardLoading(bookingId, true, "Simulating drop and re-checking...");
 
   try {
-    const dropRes = await fetch(`${API_BASE}/watch/demo-drop/${bookingId}`, { method: "POST" });
+    const dropRes = await authFetch(`${API_BASE}/watch/demo-drop/${bookingId}`, { method: "POST" });
     if (!dropRes.ok) {
       const err = await dropRes.json().catch(() => ({}));
       throw new Error(err.detail || `Demo drop failed (HTTP ${dropRes.status})`);
     }
-    const checkRes = await fetch(`${API_BASE}/watch/check/${bookingId}`, { method: "POST" });
+    const checkRes = await authFetch(`${API_BASE}/watch/check/${bookingId}`, { method: "POST" });
     const data = await checkRes.json();
     if (!checkRes.ok) throw new Error(data.detail || `HTTP ${checkRes.status}`);
     if (data.action === "hold") {

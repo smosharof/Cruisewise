@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
+import resend
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,7 +13,7 @@ from backend.config import get_settings
 from backend.db import close_pool, init_pool
 from backend.llm import configure_default_client
 from backend.errors import CruisewiseError, NotFoundError, ValidationError
-from backend.routers import account, booking, match, watch
+from backend.routers import account, admin, booking, match, watch
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,14 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     settings.configure_logging()
     logger.info("Starting Cruisewise (env=%s)", settings.app_env)
+
+    # Resend (transactional email) — module-level api_key set once at startup.
+    # Without a key the send path silently no-ops; reprice flow still completes.
+    if settings.resend_api_key:
+        resend.api_key = settings.resend_api_key
+        logger.info("Resend email configured")
+    else:
+        logger.warning("RESEND_API_KEY not set — email delivery disabled")
 
     # ADC lookup is fatal in production (Cloud Run metadata server should always
     # supply credentials) but degrades cleanly in development so the container
@@ -89,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(watch.router, prefix="/api/watch", tags=["watch"])
     app.include_router(booking.router, prefix="/api/booking", tags=["booking"])
     app.include_router(account.router, prefix="/api/account", tags=["account"])
+    app.include_router(admin.router)
 
     # --- Health ---
     # /healthz is reserved by Cloud Run's frontend (GFE intercepts and 404s

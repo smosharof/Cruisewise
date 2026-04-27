@@ -3,14 +3,19 @@ Watch orchestrator — runs a single check for one booking and emits a
 RepriceRecommendation when the math clears the threshold.
 
 Flow:
-  1. Fetch booking from `bookings`
-  2. Read the two most recent snapshots from price_history
-     (baseline = older, latest = newer)
-  3. price_math.compute_benefit on (latest, baseline)
+  1. Fetch booking from `bookings` (price_paid_usd + perks_at_booking are
+     the fixed reference — what the user actually paid at booking time)
+  2. Read the single most recent snapshot from price_history (current price)
+  3. price_math.compute_benefit on (latest snapshot, price_paid_usd)
   4. If estimated_net_benefit_usd < 50 → return None (deterministic, no LLM)
   5. Otherwise call reprice_writer (LLM) for reasoning + email
   6. Persist to reprice_events
   7. Return the assembled RepriceRecommendation
+
+The baseline is the booked price, NOT the previous snapshot. Comparing
+snapshots against each other meant repeated mock drops would each be
+measured against the prior drop, producing tiny incremental deltas and
+making the threshold gate unreachable after the first event.
 
 Why we don't call run_price_check inside this function: in the mock demo,
 run_price_check returns the static inventory list price, which would
@@ -28,9 +33,11 @@ import uuid
 from datetime import UTC, datetime
 
 import asyncpg
+from firebase_admin import auth as firebase_auth
 
 from backend.agents.subagents.reprice_writer import write_reprice
 from backend.schemas import PriceSnapshot, RepriceRecommendation
+from backend.tools.email_sender import send_reprice_email
 from backend.tools.price_math import REPRICE_THRESHOLD_USD, compute_benefit
 
 logger = logging.getLogger(__name__)
@@ -50,7 +57,7 @@ async def run_watch_check(
 
     async with pool.acquire() as conn:
         booking_row = await conn.fetchrow(
-            "SELECT id, sailing_id, cruise_line, ship_name, departure_date, "
+            "SELECT id, user_id, sailing_id, cruise_line, ship_name, departure_date, "
             "cabin_category, price_paid_usd, perks_at_booking, final_payment_date "
             "FROM bookings WHERE id = $1",
             booking_uuid,
@@ -59,26 +66,22 @@ async def run_watch_check(
             logger.warning("run_watch_check: booking %s not found", booking_id)
             return None
 
-        # 2. Read the two most recent snapshots; baseline = older, latest = newer
-        rows = await conn.fetch(
+        # 2. Read the single most recent snapshot — the current observed price.
+        latest_row = await conn.fetchrow(
             "SELECT current_price_usd, current_perks, checked_at, source "
             "FROM price_history WHERE booking_id = $1 "
-            "ORDER BY checked_at DESC LIMIT 2",
+            "ORDER BY checked_at DESC LIMIT 1",
             booking_uuid,
         )
 
-    if len(rows) < 2:
+    if latest_row is None:
         logger.info(
-            "run_watch_check: only %d snapshot(s) for %s, need at least 2 to compare",
-            len(rows),
+            "run_watch_check: no snapshots yet for %s, nothing to compare",
             booking_id,
         )
         return None
 
-    latest_row, baseline_row = rows[0], rows[1]
     latest_perks = _normalise_perks(latest_row["current_perks"])
-    baseline_price = int(baseline_row["current_price_usd"])
-    baseline_perks = _normalise_perks(baseline_row["current_perks"])
 
     latest = PriceSnapshot(
         booking_id=booking_id,
@@ -88,13 +91,15 @@ async def run_watch_check(
         source=latest_row["source"],
     )
 
-    # 3. Compute benefit. Baseline acts as the "paid" reference; latest is the
-    # "current offer". The Watch agent therefore measures the most recent
-    # observed delta — independent of how the snapshots were produced.
+    # 3. Compute benefit against the booked price + perks (the fixed reference,
+    # not the previous snapshot). This guarantees that repeated mock drops or
+    # repeated checks at the same fare always report the true total savings
+    # vs what the user paid.
+    booked_perks = _normalise_perks(booking_row["perks_at_booking"])
     benefit = compute_benefit(
         snapshot=latest,
-        price_paid_usd=baseline_price,
-        perks_at_booking=baseline_perks,
+        price_paid_usd=int(booking_row["price_paid_usd"]),
+        perks_at_booking=booked_perks,
     )
 
     # 4. Threshold gate — pure Python, no LLM call below threshold
@@ -161,6 +166,37 @@ async def run_watch_check(
         recommendation.recommendation,
         recommendation.confidence,
     )
+
+    # 8. Fire-and-forget Resend email when the agent's recommendation is to
+    # reprice. Skipped for guest/demo users (no Firebase identity to look up)
+    # and for any errors in the lookup or send. Non-fatal: the reprice
+    # recommendation is still returned to the caller either way.
+    if recommendation.recommendation == "reprice":
+        try:
+            user_id = booking_row["user_id"]
+            if (
+                user_id
+                and not user_id.startswith("guest-")
+                and user_id not in ("guest", "demo-user")
+            ):
+                fb_user = firebase_auth.get_user(user_id)
+                to_email = fb_user.email if fb_user else None
+                if to_email:
+                    send_reprice_email(
+                        to_email=to_email,
+                        ship_name=booking_row["ship_name"],
+                        cruise_line=booking_row["cruise_line"],
+                        departure_date=booking_row["departure_date"].isoformat(),
+                        cabin_category=booking_row["cabin_category"],
+                        price_paid=int(booking_row["price_paid_usd"]),
+                        current_price=int(latest_row["current_price_usd"]),
+                        savings=int(recommendation.estimated_net_benefit_usd),
+                        email_subject=recommendation.suggested_email_subject,
+                        email_body=recommendation.suggested_email_body,
+                    )
+        except Exception as e:
+            logger.warning("Could not send reprice email for %s: %s", booking_id, e)
+
     return recommendation
 
 

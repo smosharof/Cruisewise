@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # the real value from Secret Manager via Cloud Run env mount.
     apify_api_token: str = ""
 
+    # Resend — transactional email for reprice alerts. Empty default lets local
+    # dev run without it (email send is skipped, reprice flow still works).
+    resend_api_key: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"

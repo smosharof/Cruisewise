@@ -1023,6 +1023,37 @@ input[type="date"] {
   margin-bottom: 16px;
 }
 
+.price-history {
+  margin: 8px 0;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.price-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.price-history__row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  padding: 3px 0;
+}
+
+.price-history__date {
+  min-width: 130px;
+}
+
+.price-history__price {
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 70px;
+}
+
 .watch-card__header {
   display: flex;
   justify-content: space-between;
@@ -1236,4 +1267,62 @@ input[type="date"] {
 .account-value {
   color: var(--color-text);
   font-weight: 600;
+}
+
+/* ----------------------------------------------------------------------
+   Firebase auth — navbar chip + guest banner
+   ---------------------------------------------------------------------- */
+.auth-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.auth-avatar-fallback {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.auth-name {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.guest-banner {
+  background: #fff8e1;
+  border: 1.5px solid #f9ab00;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #5f4c00;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.guest-banner span {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.guest-banner .btn--text {
+  flex-shrink: 0;
+  white-space: nowrap;
 }

@@ -4,9 +4,10 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.agents.match_agent import run_match
+from backend.auth import get_user_id_or_guest
 from backend.db import acquire
 from backend.errors import NoSailingsFound
 from backend.schemas import MatchIntake, MatchResult
@@ -16,13 +17,20 @@ router = APIRouter()
 
 
 @router.post("/intake", response_model=MatchResult, status_code=201)
-async def post_intake(intake: MatchIntake) -> MatchResult:
+async def post_intake(
+    intake: MatchIntake,
+    user_id: str = Depends(get_user_id_or_guest),
+) -> MatchResult:
     """Run a match for the submitted intake and return the full result.
 
     Synchronous: the caller waits for run_match to complete (~15-25s with the
     early-exit gather). The intake is persisted before the agent runs and the
     result is persisted after. Both go to JSONB columns; the cast to ::jsonb
     in SQL keeps asyncpg from trying to JSON-encode the already-serialised string.
+
+    user_id is sourced from the Firebase ID token (Authorization: Bearer …) or
+    from a Guest header. Persisted on the intake row so per-user counts in
+    /api/account/me are accurate.
     """
     intake_id = uuid.uuid4()
     intake_id_str = str(intake_id)
@@ -30,8 +38,10 @@ async def post_intake(intake: MatchIntake) -> MatchResult:
 
     async with acquire() as conn:
         await conn.execute(
-            "INSERT INTO match_intakes (id, intake_json, created_at) VALUES ($1, $2::jsonb, $3)",
+            "INSERT INTO match_intakes (id, user_id, intake_json, created_at) "
+            "VALUES ($1, $2, $3::jsonb, $4)",
             intake_id,
+            user_id,
             intake.model_dump_json(),
             now,
         )

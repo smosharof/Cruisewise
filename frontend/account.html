@@ -29,6 +29,7 @@
       <li><a class="nav__link" href="watch.html">Watch</a></li>
       <li><a class="nav__link nav__link--active" href="account.html">Account</a></li>
     </ul>
+    <div id="auth-container"></div>
   </nav>
 
   <main>
@@ -61,5 +62,13 @@
 
   <script type="module" src="js/account.js"></script>
   <div class="contact-attribution">Contact: Moe Shamim</div>
+
+  <script type="module">
+    import { auth, onAuthStateChanged } from "./js/auth.js";
+    import { renderAuthButton } from "./js/auth-ui.js";
+    const container = document.getElementById("auth-container");
+    onAuthStateChanged(auth, () => renderAuthButton(container));
+    renderAuthButton(container);
+  </script>
 </body>
 </html>

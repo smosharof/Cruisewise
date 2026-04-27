@@ -6,6 +6,7 @@
  */
 
 import { submitIntake } from "./api.js";
+import { getAuthHeader } from "./auth.js";
 
 /* -------------------------------------------------------------------------
    Stopwatch — runs from form submit until results render
@@ -1275,9 +1276,13 @@ function closeWatchPanel() {
     };
 
     try {
+      const authHeader = await getAuthHeader();
       const res = await fetch("/api/watch/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authHeader,
+        },
         body: JSON.stringify(payload),
       });
       if (res.status === 409) {

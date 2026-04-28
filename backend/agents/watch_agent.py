@@ -171,31 +171,74 @@ async def run_watch_check(
     # reprice. Skipped for guest/demo users (no Firebase identity to look up)
     # and for any errors in the lookup or send. Non-fatal: the reprice
     # recommendation is still returned to the caller either way.
+    #
+    # Verbose logging here is intentional — it's the only signal we have in
+    # production logs to debug "user clicked Trigger but never got an email"
+    # reports, which can fail at the Firebase lookup, the Resend API, or
+    # silently because the recommendation came back as "hold".
+    logger.info(
+        "run_watch_check booking=%s recommendation=%s net_benefit=%s",
+        booking_id,
+        recommendation.recommendation,
+        recommendation.estimated_net_benefit_usd,
+    )
+
     if recommendation.recommendation == "reprice":
+        user_id = booking_row["user_id"]
+        logger.info(
+            "reprice_email: attempting send booking=%s user_id=%s",
+            booking_id,
+            user_id,
+        )
+
+        email_sent = False
+        to_email: str | None = None
         try:
-            user_id = booking_row["user_id"]
             if (
                 user_id
                 and not user_id.startswith("guest-")
                 and user_id not in ("guest", "demo-user")
             ):
-                fb_user = firebase_auth.get_user(user_id)
-                to_email = fb_user.email if fb_user else None
+                try:
+                    fb_user = firebase_auth.get_user(user_id)
+                    to_email = fb_user.email if fb_user else None
+                    logger.info("reprice_email: firebase_user found email=%s", to_email)
+                except Exception as e:
+                    logger.warning(
+                        "reprice_email: firebase_user lookup failed user_id=%s error=%s",
+                        user_id,
+                        e,
+                    )
+                    to_email = None
+
                 if to_email:
-                    send_reprice_email(
-                        to_email=to_email,
-                        ship_name=booking_row["ship_name"],
-                        cruise_line=booking_row["cruise_line"],
-                        departure_date=booking_row["departure_date"].isoformat(),
-                        cabin_category=booking_row["cabin_category"],
-                        price_paid=int(booking_row["price_paid_usd"]),
-                        current_price=int(latest_row["current_price_usd"]),
-                        savings=int(recommendation.estimated_net_benefit_usd),
-                        email_subject=recommendation.suggested_email_subject,
-                        email_body=recommendation.suggested_email_body,
+                    email_sent = bool(
+                        send_reprice_email(
+                            to_email=to_email,
+                            ship_name=booking_row["ship_name"],
+                            cruise_line=booking_row["cruise_line"],
+                            departure_date=booking_row["departure_date"].isoformat(),
+                            cabin_category=booking_row["cabin_category"],
+                            price_paid=int(booking_row["price_paid_usd"]),
+                            current_price=int(latest_row["current_price_usd"]),
+                            savings=int(recommendation.estimated_net_benefit_usd),
+                            email_subject=recommendation.suggested_email_subject,
+                            email_body=recommendation.suggested_email_body,
+                        )
                     )
         except Exception as e:
             logger.warning("Could not send reprice email for %s: %s", booking_id, e)
+
+        logger.info(
+            "reprice_email: sent=%s to=%s",
+            email_sent,
+            to_email if to_email else "no_email_found",
+        )
+    else:
+        logger.info(
+            "reprice_email: skipped — recommendation=%s",
+            recommendation.recommendation,
+        )
 
     return recommendation
 

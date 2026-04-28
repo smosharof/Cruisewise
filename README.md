@@ -459,6 +459,20 @@ gcloud run deploy cruisewise \
 
 Note: Cloud Build requires the Compute Engine default service account (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`) to have `cloudbuild.builds.builder`, `storage.admin`, `artifactregistry.writer`, and `logging.logWriter` — not granted by default on newer GCP projects.
 
+**Required IAM permissions** (one-time setup, not part of deploy):
+```bash
+# Allow service account to read Resend API key
+gcloud secrets add-iam-policy-binding RESEND_API_KEY \
+  --member="serviceAccount:cruisewise-runner@ms7285-ieor4576-proj03.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor" \
+  --project=ms7285-ieor4576-proj03
+
+# Allow service account to look up Firebase user emails
+gcloud projects add-iam-policy-binding ms7285-ieor4576-proj03 \
+  --member="serviceAccount:cruisewise-runner@ms7285-ieor4576-proj03.iam.gserviceaccount.com" \
+  --role="roles/firebaseauth.admin"
+```
+
 ### Deployed URL
 
 `https://cruisewise-316936340666.us-central1.run.app`
@@ -589,6 +603,7 @@ cruisewise/
 | DB user | `cruisewise-app` |
 | Artifact Registry | `us-central1-docker.pkg.dev/ms7285-ieor4576-proj03/cloud-run-source-deploy/cruisewise` |
 | Cloud Run service | `cruisewise` |
+| Firebase Auth role | `roles/firebaseauth.admin` granted to `cruisewise-runner` service account — required for Firebase Admin SDK to look up user emails for reprice email delivery |
 
 Secrets stored in GCP Secret Manager: `DATABASE_URL` only. LLM auth is via Application Default Credentials supplied by the Cloud Run service account (`cruisewise-runner@ms7285-ieor4576-proj03.iam.gserviceaccount.com`); no LLM key is stored.
 
@@ -610,6 +625,7 @@ Secrets stored in GCP Secret Manager: `DATABASE_URL` only. LLM auth is via Appli
 | GBP/international pricing partial | `en_GB` market configs are wired in `inventory_refresh.py` but several cruise line actors silently return USD regardless of market setting. `formatPrice` is correctly implemented and will show £ / A$ when actors honor international markets |
 | Norwegian input key | Norwegian's Apify actor uses `region` (not `market`) as its input key. Initial seed used wrong key producing EUR-priced records. Fixed in SCRAPER_CONFIGS |
 | Inventory refresh is manual | The nightly Cloud Scheduler + Cloud Run Job pattern is documented in the README but not yet deployed. Inventory is refreshed manually via `scripts/seed_inventory.py` before demos. Current inventory: ~4,100 sailings across 8 cruise lines |
+| Firebase Auth SDK requires firebaseauth.admin role | The Cloud Run service account must have `roles/firebaseauth.admin` granted at project level to call `firebase_auth.get_user()`. Without it, the reprice email lookup silently fails with "insufficient permissions". Grant via: `gcloud projects add-iam-policy-binding ms7285-ieor4576-proj03 --member="serviceAccount:cruisewise-runner@ms7285-ieor4576-proj03.iam.gserviceaccount.com" --role="roles/firebaseauth.admin"` |
 
 ---
 

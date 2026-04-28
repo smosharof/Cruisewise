@@ -7,10 +7,11 @@ import {
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
-// REPLACE with real Firebase config after the user creates the Firebase project
-// (Console → Project settings → General → Your apps → Web app → SDK setup).
+// firebase-api-key: safe to commit — Firebase web API keys are public identifiers
+// Access is restricted via Firebase Auth authorized domains, not key secrecy
+// See: https://firebase.google.com/docs/projects/api-keys
 const firebaseConfig = {
-  apiKey: "AIzaSyDHvyi7gfQvbpuEi9vDK1SN8xi-dNgoHU0",
+  apiKey: "AIzaSyDHvyi7gfQvbpuEi9vDK1SN8xi-dNgoHU0",  // ok-to-expose
   authDomain: "ms7285-ieor4576-proj03.firebaseapp.com",
   projectId: "ms7285-ieor4576-proj03",
 };

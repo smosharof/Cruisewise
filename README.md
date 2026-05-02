@@ -47,7 +47,7 @@ The **Watch** product takes any booking — whether the user got it through Crui
 1. Ensure you are signed in with a Google account
 2. Open a second tab and navigate to `/admin.html`
 3. Find your watch in the list — set drop amount to `50` or more and click **"Trigger price drop"**
-4. Switch back to the Watch page and refresh — the card should show green `Current: $X ↓ -$300`
+4. Switch back to the Watch page and refresh — the card should show green `Current: $X ↓ -$[amount]`
 5. Check the Gmail inbox for the signed-in Google account — a reprice alert email should arrive from `noreply@moeshamim.com` within 30 seconds containing the ship details, savings amount, and a pre-filled travel agent email
 
 ### Test per-user data isolation
@@ -103,11 +103,9 @@ flowchart TD
     B --> C[Persist BookingRecord to bookings\nupsert ON CONFLICT id]
     C --> D[Create watches row active=TRUE]
     D --> E[run_price_check writes baseline snapshot to price_history]
-    E --> F[User clicks Check now or Simulate price drop]
+    E --> F[User clicks Check now]
     F --> G1[POST /api/watch/check/booking_id]
-    F --> G2[POST /api/watch/demo-drop/booking_id\ninject_mock_drop writes -$300 snapshot]
-    G2 --> G1
-    G1 --> H[run_watch_check reads two most recent price_history rows]
+    G1 --> H[run_watch_check reads latest price_history snapshot\ncompares against price_paid_usd from bookings]
     H --> I[price_math.compute_benefit pure Python\nprice_delta + perk_delta]
     I --> J{net_benefit >= $50?}
     J -->|no| K[Return action=hold]
@@ -165,10 +163,8 @@ Each sailing record includes: `id`, `cruise_line`, `ship_name`, `departure_port`
 |---|---|
 | Backend | FastAPI, uvicorn, Python 3.11, `uv` package manager |
 | Database | PostgreSQL 15 via Cloud SQL (`cruisewise-db`), database `cruisewise`, user `cruisewise-app` |
-| Vector store | pgvector 0.8.1 — `review_chunks` table with 1536-dim embeddings, HNSW cosine index (seeding pending) |
 | LLM | Vertex AI Gemini 2.5 Flash via OpenAI-compatible endpoint (`https://{region}-aiplatform.googleapis.com/v1beta1/projects/{project}/locations/{region}/endpoints/openapi`) |
 | Agent framework | OpenAI Agents SDK (`agents.Agent`, `output_type` structured-output enforcement, `Runner.run`) |
-| Auth | Google Cloud ADC — no API keys in environment; Cloud Run service account provides credentials automatically |
 | Frontend | Vanilla JS, HTML, CSS — two-tab SPA (Match, Watch) plus account page |
 | Deployment | Google Cloud Run, Artifact Registry (`--source .` build via Cloud Build) |
 | Authentication | Firebase Auth (Google Sign-In) + guest UUID mode; Firebase Admin SDK for server-side token verification |
@@ -235,7 +231,7 @@ Cruisewise uses **Firebase Auth** with Google Sign-In. Authentication is optiona
 
 ---
 
-## 8. Technical Design Decisions
+## 8. Technical Design Decisions & Requirements Mapping
 
 ### Agent framework
 Three distinct agents — `ship_researcher`, `synthesizer`, `reprice_writer` — each declared with `agents.Agent(model=..., output_type=...)` via the OpenAI Agents SDK. The SDK enforces structured output contracts at every LLM boundary, preventing malformed responses from propagating downstream.
@@ -336,7 +332,7 @@ uv run pytest -v   # 67 passed
 
 ---
 
-## Inventory Refresh
+## 10. Inventory Refresh
 
 The `sailings` table is populated from Apify cruise line scrapers across 8 cruise lines and 3 markets (US, UK, AU). The current inventory contains ~4,100 sailings.
 
@@ -410,7 +406,7 @@ AND a.duration_nights = b.duration_nights;
 
 ---
 
-## 10. Deployment
+## 11. Deployment
 
 ### Build and deploy in one step (`--source .` builds via Cloud Build)
 
@@ -450,7 +446,7 @@ gcloud projects add-iam-policy-binding ms7285-ieor4576-proj03 \
 
 ---
 
-## API Endpoints
+## 12. API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -474,7 +470,7 @@ gcloud projects add-iam-policy-binding ms7285-ieor4576-proj03 \
 
 ---
 
-## Key Files
+## 13. Key Files
 
 ```
 cruisewise/
@@ -482,7 +478,7 @@ cruisewise/
 │   ├── main.py                              # FastAPI entry; lifespan wires LLM client + DB pool, dev-mode degradation
 │   ├── config.py                            # Pydantic settings (GCP project/region, LLM model, DSN, CORS origins)
 │   ├── llm.py                               # Vertex AI client via ADC; OpenAIChatCompletionsModel bypasses SDK prefix router
-│   ├── db.py                                # asyncpg pool + pgvector codec registration (public schema)
+│   ├── db.py                                # asyncpg connection pool (public schema)
 │   ├── errors.py                            # Domain error classes (NoSailingsFound, ValidationError, etc.)
 │   ├── schemas.py                           # All Pydantic contracts (MatchIntake, ShipAssessment, MatchResult, BookingRecord, RepriceRecommendation, etc.)
 │   ├── auth.py                              # Firebase Admin SDK token verification; get_current_user_id (strict 401), get_user_id_or_guest (tolerant guest UUID fallback)
@@ -494,7 +490,7 @@ cruisewise/
 │   │   └── admin.py                         # GET /api/admin/watches, POST /api/admin/trigger-drop/{id} — demo admin, no auth gate
 │   ├── agents/
 │   │   ├── match_agent.py                   # run_match orchestrator + _gather_with_early_exit + _safe_research wrapper
-│   │   ├── watch_agent.py                   # run_watch_check — reads two latest snapshots, gates LLM on price_math threshold
+│   │   ├── watch_agent.py                   # run_watch_check — reads latest snapshot, compares vs price_paid_usd, gates LLM on price_math threshold
 │   │   └── subagents/
 │   │       ├── ship_researcher.py           # research_ship — per-sailing ShipAssessment via Vertex AI
 │   │       ├── synthesizer.py               # synthesize_memo — top_pick_reasoning + counter_memo + truncation fallback
@@ -503,15 +499,12 @@ cruisewise/
 │   │   ├── cruise_inventory.py              # search_sailings (asyncpg + ILIKE region/port), get_sailing, _IATA_TO_PORT_TOKENS
 │   │   ├── apify_client.py                  # run_actor() async wrapper — run-sync-get-dataset-items, swallows 404/timeout/HTTP errors
 │   │   ├── price_math.py                    # compute_benefit (pure Python TypedDict), REPRICE_THRESHOLD_USD = $50
-│   │   ├── reviews_rag.py                   # retrieve_by_embedding (HNSW cosine), retrieve_by_ship (ILIKE fallback)
-│   │   ├── email_sender.py                  # send_reprice_email() via Resend — from noreply@moeshamim.com, HTML template with savings table + email draft block
-│   │   ├── email_gen.py                     # Placeholder — superseded by reprice_writer
-│   │   └── notifier.py                      # Console-only notifier stub
+│   │   └── email_sender.py                  # send_reprice_email() via Resend — from noreply@moeshamim.com, HTML template with savings table + email draft block
 │   ├── workers/
 │   │   ├── price_checker.py                 # run_price_check (writes snapshot), inject_mock_drop (demo trigger)
 │   │   └── inventory_refresh.py             # Apify parallel scraper, normalize_sailing, upsert_sailings, _clean_ship_name
 │   └── db/migrations/
-│       ├── 001_initial.sql                  # PostgreSQL + pgvector schema (8 tables, HNSW index)
+│       ├── 001_initial.sql                  # PostgreSQL schema — core tables and indexes
 │       ├── 002_sailings.sql                 # sailings table + 3 indexes (date, cruise_line, GIN destination_names)
 │       ├── 003_add_currency.sql             # ALTER TABLE sailings ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'
 │       └── 004_add_user_id.sql              # Converts user_id UUID FK → TEXT on match_intakes + bookings; adds btree indexes
@@ -537,7 +530,6 @@ cruisewise/
 │   ├── test_schemas.py                      # 7 schema tests (Sailing inheritance, cabin distinction, defaults)
 │   └── test_ship_researcher.py              # 1 live Vertex AI smoke test (gated on ADC presence)
 ├── scripts/
-│   ├── seed_reviews.py                      # Placeholder — pgvector seeding pending
 │   ├── trigger_mock_drop.py                 # Demo helper for ad-hoc Watch flow exercising
 │   └── seed_inventory.py                    # One-line wrapper around run_refresh() for manual inventory seeding
 ├── Dockerfile                               # python:3.11-slim, uv, non-root appuser
@@ -548,22 +540,20 @@ cruisewise/
 
 ---
 
-## Database Tables
+## 14. Database Tables
 
 | Table | Purpose |
 |---|---|
-| `users` | User profiles (auth not yet wired; stub demo user) |
 | `match_intakes` | Captured intake form submissions (JSONB) |
 | `match_results` | Persisted `MatchResult` per intake (JSONB; multiple results per intake permitted for re-runs) |
 | `bookings` | `BookingRecord` rows (Match-sourced or external), keyed by booking UUID |
 | `watches` | One-per-booking watch state (active flag, watching_since, checks_performed, reprice_events_count) |
 | `price_history` | Snapshots written by `run_price_check` and `inject_mock_drop` (current_price_usd, current_perks, source) |
 | `reprice_events` | Persisted `RepriceRecommendation` JSON per detected reprice opportunity |
-| `review_chunks` | pgvector store, 1536-dim embeddings, HNSW cosine index — schema live, seeding pending |
 
 ---
 
-## GCP Configuration
+## 15. GCP Configuration
 
 | Config | Value |
 |---|---|
@@ -576,11 +566,11 @@ cruisewise/
 | Cloud Run service | `cruisewise` |
 | Firebase Auth role | `roles/firebaseauth.admin` granted to `cruisewise-runner` service account — required for Firebase Admin SDK to look up user emails for reprice email delivery |
 
-Secrets stored in GCP Secret Manager: `DATABASE_URL` only. LLM auth is via Application Default Credentials supplied by the Cloud Run service account (`cruisewise-runner@ms7285-ieor4576-proj03.iam.gserviceaccount.com`); no LLM key is stored.
+Secrets stored in GCP Secret Manager: `DATABASE_URL`, `APIFY_API_TOKEN`, `RESEND_API_KEY`. LLM auth is via Application Default Credentials supplied by the Cloud Run service account (`cruisewise-runner@ms7285-ieor4576-proj03.iam.gserviceaccount.com`); no LLM key is stored.
 
 ---
 
-## Known Limitations
+## 16. Known Limitations
 
 | Limitation | Detail |
 |---|---|
@@ -589,4 +579,4 @@ Secrets stored in GCP Secret Manager: `DATABASE_URL` only. LLM auth is via Appli
 
 ---
 
-*Last updated: April 2026*
+*Last updated: May 2026*

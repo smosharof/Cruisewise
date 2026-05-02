@@ -1,16 +1,14 @@
 # Cruisewise
 
-A FastAPI + PostgreSQL + Vertex AI application for first-time cruise matchmaking and post-booking fare watching. Deployed on Google Cloud Run.
+A FastAPI + PostgreSQL + Vertex AI platform for cruise matchmaking and post-booking fare watching. Deployed on Google Cloud Run.
 
 ---
 
 ## 1. Executive Summary
 
-Cruisewise is a two-product AI agent platform for cruise travelers of all experience levels. The **Match** product helps first-time cruisers find a sailing that actually fits them by walking them through a short structured intake — travel party, vibe, budget, dates, regions, ports — and then dispatching a parallel fan-out of LLM sub-agents to score candidate sailings against that intake. Each candidate comes back with a vibe-fit percentage, a paragraph of fit reasoning that names the user's specific inputs, two columns of strengths and concerns, and a synthesized memo that explains why the top pick beats the runners-up and what could go wrong. The intended user is any cruise traveler — first-timer or seasoned cruiser — who wants a smarter way to find the right sailing or protect a booking they've already made.
+Cruisewise is a two-product AI agent platform for cruise travelers. The **Match** product helps travelers find a sailing that fits them — whether they are booking for the first time or exploring a new cruise style — by walking them through a structured intake covering travel party, vibe, budget, dates, regions, and ports. It then dispatches a parallel fan-out of LLM sub-agents to score candidate sailings against that intake. Each candidate comes back with a vibe-fit percentage, a paragraph of fit reasoning that names the user's specific inputs, two columns of strengths and concerns, and a synthesized memo that explains why the top pick beats the runners-up and what could go wrong.
 
 The **Watch** product takes any booking — whether the user got it through Cruisewise or somewhere else — and monitors it for fare drops. When a current-rate snapshot drops at least $50 below the booked price, a deterministic Python price-math step computes the net benefit (price delta plus perk delta), then a single LLM agent writes a polite, ready-to-forward reprice email naming the ship, sailing date, cabin category, original price, new price, and dollar savings. The user copies the email and sends it to their travel agent. The two products are linked: a Match-driven booking can flow into Watch via `/api/booking/confirm`, and the same `BookingRecord` schema covers both Cruisewise-sourced and externally-sourced bookings. The business model is lead-gen affiliate revenue on Match (booking handoffs to cruise lines via tracked affiliate URLs) plus a $9.99/month subscription on Watch.
-
-**Live link:** https://cruisewise-316936340666.us-central1.run.app
 
 ---
 
@@ -36,21 +34,19 @@ The **Watch** product takes any booking — whether the user got it through Crui
 6. Verify: A synthesized top-pick callout explains why the #1 result beats the runners-up
 7. Click **"Watch this price"** on any result — a slide-in panel should appear pre-filled with the sailing details
 
-### Test the Watch product (requires Google Sign-In)
+### Test the Watch product
 
-1. Click **"Sign in with Google"** in the navbar — a Google OAuth popup appears
-2. Sign in with any Google account
-3. Verify: your name and profile picture appear in the navbar
-4. From a Match result, click **"Watch this price"** → fill in a final payment date → click **"Start watching"**
-5. Navigate to the **Watch** page — your new watch card appears with paid price and current price
-6. Click **"Check now"** — the price is fetched and the "Last checked" timestamp updates
-7. Click **"Show price history"** — a deduplicated timeline of price snapshots expands
+1. From a Match result, click **"Watch this price"** → fill in a final payment date → click **"Start watching"** (no sign-in required)
+2. Navigate to the **Watch** page — your new watch card appears with paid price and current price
+3. To save your history across sessions, click **"Sign in with Google"** in the navbar — your watches will persist to your account and be visible on return visits
+4. Click **"Check now"** — the price is fetched and the "Last checked" timestamp updates
+5. Click **"Show price history"** — a deduplicated timeline of price snapshots expands
 
 ### Test the price drop alert (admin trigger)
 
 1. Ensure you are signed in with a Google account
 2. Open a second tab and navigate to `/admin.html`
-3. Find your watch in the list — set drop amount to `300` and click **"Trigger price drop"**
+3. Find your watch in the list — set drop amount to `50` or more and click **"Trigger price drop"**
 4. Switch back to the Watch page and refresh — the card should show green `Current: $X ↓ -$300`
 5. Check the Gmail inbox for the signed-in Google account — a reprice alert email should arrive from `noreply@moeshamim.com` within 30 seconds containing the ship details, savings amount, and a pre-filled travel agent email
 
@@ -159,11 +155,7 @@ Each sailing record includes: `id`, `cruise_line`, `ship_name`, `departure_port`
 
 ### Cruise line knowledge
 
-The `ship_researcher` sub-agent (`backend/agents/subagents/ship_researcher.py`) does not retrieve external review data at this stage. Instead, the system prompt instructs Gemini 2.5 Flash to apply its training-time knowledge of cruise line culture — Royal Caribbean Oasis-class as family/party megaships, Princess as relaxation-leaning, Viking as cultural with no kids and no casinos, Carnival as energetic and party-forward, Celebrity as luxury-leaning, MSC as international and value-oriented. The prompt enumerates concrete known concerns (megaship crowding at peak times, tender-port transit delays, demographic mismatch on family-skewed lines, MSC English-language service inconsistencies) so the model is guided toward genuine downsides rather than disguised compliments. This replaces live review scraping for the MVP. The single output field that summarizes traveler sentiment is `review_sentiment_summary`, paraphrased and capped at 500 characters with a 280-character soft target in the prompt.
-
-### pgvector review store
-
-`backend/tools/reviews_rag.py` exposes two retrieval methods against the `review_chunks` table: `retrieve_by_embedding(query_embedding, ship_name)` for HNSW cosine similarity over 1536-dimensional embeddings, and `retrieve_by_ship(ship_name)` as a SQL ILIKE keyword fallback. The table, the HNSW index (`m=16, ef_construction=64`, `vector_cosine_ops`), the supporting `idx_review_chunks_ship` btree index, and the asyncpg vector codec registration are all live in production. When seeded with traveler reviews — the design target is roughly 200 chunks per ship — these calls would ground `review_sentiment_summary` in real text instead of training knowledge. Seeding is pending; `scripts/seed_reviews.py` is the placeholder.
+`ship_researcher` grounds each assessment in Gemini 2.5 Flash's knowledge of cruise line culture. The system prompt enumerates concrete known concerns per line so the model produces genuine downsides rather than disguised compliments. Each result includes a `review_sentiment_summary` field capped at 500 characters.
 
 ---
 
@@ -205,6 +197,10 @@ The `ship_researcher` sub-agent (`backend/agents/subagents/ship_researcher.py`) 
 - **Remove watch**: inline confirmation on each card; soft-deletes the watch record
 - **Reprice email**: when net benefit ≥ $50, reprice_writer LLM generates a pre-filled travel agent email rendered in a monospace block with copy-to-clipboard; email also delivered automatically to the user's Gmail via Resend
 
+### Admin page
+
+A hidden demo tool at `/admin.html` — not linked from the navbar, accessed by typing the URL directly. Shows all active watches across real authenticated users (guests and demo data excluded). Each card displays ship name, cruise line, departure date, cabin category, user ID, paid price, and current price. A configurable drop amount input (default $300, range $50–$700) and "Trigger price drop" button injects a mock price snapshot and immediately runs the watch agent — generating a reprice recommendation and sending a reprice email to the user's Gmail. Used on demo day to show the full Watch flow end-to-end without waiting for a real fare change.
+
 ---
 
 ## 7. Authentication
@@ -239,31 +235,7 @@ Cruisewise uses **Firebase Auth** with Google Sign-In. Authentication is optiona
 
 ---
 
-## 8. Admin Page
-
-A hidden demo tool accessible at `/admin.html` — not linked from the navbar. Navigate directly by typing the URL.
-
-### Purpose
-The admin page allows triggering simulated price drops on any active watch belonging to a real authenticated user. This is used on demo day to show the full Watch flow end-to-end without waiting for a real fare change.
-
-### What it shows
-Each active watch card displays: ship name, cruise line, departure date, cabin category, user ID prefix, paid price, and current price. Only watches belonging to real Firebase-authenticated users are shown — guest and demo data are excluded.
-
-### How to trigger a price drop
-1. Navigate to `https://cruisewise-316936340666.us-central1.run.app/admin.html`
-2. Find the booking you want to drop
-3. Set the drop amount (default $300, range $50–$700)
-4. Click **"Trigger price drop"**
-5. The backend injects a mock snapshot and immediately runs `run_watch_check`
-6. If net benefit ≥ $50, a `RepriceRecommendation` is generated and a reprice email is sent to the user's Gmail
-7. The user's Watch page updates automatically on next load showing the green price drop indicator
-
-### Security note
-There is no authentication on `/api/admin/*`. The URL obscurity is the only protection. Do not publicize the admin URL.
-
----
-
-## 9. Technical Design Decisions
+## 8. Technical Design Decisions
 
 ### Agent framework
 Three distinct agents — `ship_researcher`, `synthesizer`, `reprice_writer` — each declared with `agents.Agent(model=..., output_type=...)` via the OpenAI Agents SDK. The SDK enforces structured output contracts at every LLM boundary, preventing malformed responses from propagating downstream.
@@ -285,10 +257,10 @@ Three distinct agents — `ship_researcher`, `synthesizer`, `reprice_writer` —
 **Files:** `backend/schemas.py`, `backend/agents/subagents/synthesizer.py` → `_truncate_to_char_limit()`
 
 ### Dual data retrieval
-Two distinct retrieval methods operate in the same pipeline:
+Two distinct retrieval methods operate at different points in the system:
 
-1. **SQL filter search** — `search_sailings()` queries the `sailings` table via `asyncpg` with ILIKE region/port matching and a GIN index on `destination_names`. Fast, deterministic, no LLM involved.
-2. **Apify REST API** — `run_actor()` hits Apify's `run-sync-get-dataset-items` endpoint at seed time, pulling live inventory from 8 cruise line scrapers across 3 markets.
+1. **Apify REST API** — `run_actor()` hits Apify's `run-sync-get-dataset-items` endpoint during the nightly inventory refresh, pulling live pricing from 8 cruise line scrapers across 3 markets and upserting results into the `sailings` table. This runs at seed time, not per user request.
+2. **SQL filter search** — `search_sailings()` queries the `sailings` table via `asyncpg` at request time when a user submits a Match intake. Uses ILIKE region/port matching and a GIN index on `destination_names` to return the top 5 candidate sailings in milliseconds.
 
 **Files:** `backend/tools/cruise_inventory.py` → `search_sailings()`, `backend/workers/inventory_refresh.py` → `run_refresh()`, `backend/tools/apify_client.py` → `run_actor()`
 
@@ -314,7 +286,7 @@ When a user selects preferred cruise lines (e.g. loyalty members), `_apply_line_
 
 ---
 
-## 10. Setup & Running Locally
+## 9. Setup & Running Locally
 
 ### Prerequisites
 - Cloud SQL Auth Proxy running on port 5433 (not 5432 — avoid collision with a local Postgres)
@@ -339,19 +311,22 @@ App available at: `http://localhost:8082`
 
 ### Run migrations (first time only)
 
-With the proxy running on 5433:
+This step is only needed when setting up a **fresh database**. The production Cloud SQL instance at `ms7285-ieor4576-proj03:us-central1:cruisewise-db` already has all migrations applied.
+
+For a new database, run all four migrations in order with the proxy running on port 5433:
 
 ```bash
-PGPASSWORD=<password> psql "host=localhost port=5433 dbname=cruisewise user=cruisewise-app" \
-  -f backend/db/migrations/001_initial.sql
+PGPASSWORD=$(gcloud secrets versions access latest --secret=DATABASE_URL \
+  --project=ms7285-ieor4576-proj03 | python3 -c \
+  "import sys; from urllib.parse import urlparse; u=urlparse(sys.stdin.read().strip()); print(u.password)") \
+  psql "host=127.0.0.1 port=5433 dbname=cruisewise user=cruisewise-app" \
+  -f backend/db/migrations/001_initial.sql \
+  -f backend/db/migrations/002_sailings.sql \
+  -f backend/db/migrations/003_add_currency.sql \
+  -f backend/db/migrations/004_add_user_id.sql
 ```
 
-The migration creates `uuid-ossp` and `vector`, then the eight tables (`users`, `match_intakes`, `match_results`, `bookings`, `watches`, `price_history`, `reprice_events`, `review_chunks`) and their indexes.
-
-Subsequent migrations to apply in order:
-- `backend/db/migrations/002_sailings.sql` — sailings table + 3 indexes (date, cruise_line, GIN destination_names)
-- `backend/db/migrations/003_add_currency.sql` — `ALTER TABLE sailings ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'`
-- `backend/db/migrations/004_add_user_id.sql` — converts user_id columns from UUID FK to TEXT to support Firebase UIDs; adds indexes on `match_intakes.user_id` and `bookings.user_id`
+The four migrations create: all core tables and indexes (001), the sailings table with GIN index (002), currency column on sailings (003), and TEXT user_id columns with Firebase UID support (004).
 
 ### Run tests
 
@@ -376,7 +351,7 @@ APP_ENV=development \
 uv run python scripts/seed_inventory.py
 ```
 
-The script runs all configured scrapers in parallel and upserts results into the `sailings` table. A full refresh takes 5–8 minutes and costs approximately $5–7 in Apify credits at the Starter plan rate ($1.00 per 1,000 results).
+The script runs all configured scrapers in parallel and upserts results into the `sailings` table. A full refresh takes 5–8 minutes. The Apify monthly subscription provides $31 in credit, which is consumed by a full refresh across all 8 cruise lines.
 
 ### Scrapers configured
 
@@ -435,7 +410,7 @@ AND a.duration_nights = b.duration_nights;
 
 ---
 
-## 11. Deployment
+## 10. Deployment
 
 ### Build and deploy in one step (`--source .` builds via Cloud Build)
 
@@ -472,10 +447,6 @@ gcloud projects add-iam-policy-binding ms7285-ieor4576-proj03 \
   --member="serviceAccount:cruisewise-runner@ms7285-ieor4576-proj03.iam.gserviceaccount.com" \
   --role="roles/firebaseauth.admin"
 ```
-
-### Deployed URL
-
-`https://cruisewise-316936340666.us-central1.run.app`
 
 ---
 
@@ -613,19 +584,8 @@ Secrets stored in GCP Secret Manager: `DATABASE_URL` only. LLM auth is via Appli
 
 | Limitation | Detail |
 |---|---|
-| Cross-run non-determinism | Gemini 2.5 Flash returns slightly different `vibe_score` values across runs for the same intake. The sort is stable for tied scores (price ascending as tie-breaker) but LLM stochasticity plus early-exit gather racing means the surviving #2/#3 may swap between runs |
-| Review RAG not yet seeded | The `review_chunks` table and HNSW cosine index are live, but `ship_researcher` currently uses Gemini's training knowledge for `review_sentiment_summary`. Seeding ~200 review chunks per ship would ground that field in real text |
-| Secret Manager DSN passwords must be URL-safe | asyncpg parses the DSN directly without URL-decoding the password component. Passwords from `openssl rand -base64 24` may contain `:` or `/` which asyncpg misparses (the `:` is read as a port separator). Use `openssl rand -hex 24` |
-| Cloud Run intercepts `/healthz` | GCP's Global Frontend intercepts requests to `/healthz` before they reach the container and returns its own 404 HTML page. Use `/health` for production health probes; `/healthz` works correctly in local dev and TestClient because GFE is not in the path |
-| Cold start ~9.5s | Includes ADC token refresh, asyncpg pool init, and pgvector codec registration. Acceptable for demo; setting `--min-instances 1` would eliminate cold starts at the cost of a single always-on instance |
-| Norwegian and Princess seeded | Both lines are fully seeded — Norwegian (790 sailings, US+GB markets) and Princess (500 sailings, US+GB+AU markets). Norwegian's actor uses `region` (not `market`) as its input key — handled correctly in SCRAPER_CONFIGS. |
-| International market sailings deferred | The inventory refresh worker supports `en_GB` and `en_AU` market variants for Royal Caribbean, Celebrity, MSC, and Holland America. These were not seeded due to the Apify credit limit. A full international seed would add GBP and AUD-priced sailings from European and Pacific departure ports |
-| Budget filter uses nominal price comparison | `budget_per_person_usd` is compared against `starting_price_usd` numerically regardless of currency. A GBP sailing priced at £820 passes a $2,500 budget filter because 820 < 2500. Production fix: convert all prices to USD at seed time using a rates API |
-| New York Caribbean sailings limited | DB contains 47 NY-area sailings but only 4 are tagged Caribbean (all Princess Majestic 12-night itineraries). NY cruise passengers predominantly sail to Bermuda from Cape Liberty. A user searching NY + Caribbean 7–10 nights gets seed data fallback — data coverage gap, not a code bug |
-| GBP/international pricing partial | `en_GB` market configs are wired in `inventory_refresh.py` but several cruise line actors silently return USD regardless of market setting. `formatPrice` is correctly implemented and will show £ / A$ when actors honor international markets |
-| Norwegian input key | Norwegian's Apify actor uses `region` (not `market`) as its input key. Initial seed used wrong key producing EUR-priced records. Fixed in SCRAPER_CONFIGS |
-| Inventory refresh is manual | The nightly Cloud Scheduler + Cloud Run Job pattern is documented in the README but not yet deployed. Inventory is refreshed manually via `scripts/seed_inventory.py` before demos. Current inventory: ~4,100 sailings across 8 cruise lines |
-| Firebase Auth SDK requires firebaseauth.admin role | The Cloud Run service account must have `roles/firebaseauth.admin` granted at project level to call `firebase_auth.get_user()`. Without it, the reprice email lookup silently fails with "insufficient permissions". Grant via: `gcloud projects add-iam-policy-binding ms7285-ieor4576-proj03 --member="serviceAccount:cruisewise-runner@ms7285-ieor4576-proj03.iam.gserviceaccount.com" --role="roles/firebaseauth.admin"` |
+| Inventory refresh is manual | The nightly Cloud Scheduler + Cloud Run Job pattern is documented but not yet deployed. Inventory is refreshed manually via `scripts/seed_inventory.py` before demos. Current inventory: ~4,100 sailings across 8 cruise lines. |
+| Apify monthly credit | The Apify monthly subscription provides $31 in credit, which is fully consumed by a single refresh across all 8 cruise lines. Refresh manually after the monthly credit resets or upgrade the Apify plan for automated nightly runs. |
 
 ---
 
